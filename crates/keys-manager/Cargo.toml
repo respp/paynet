@@ -1,0 +1,9 @@
+[package]
+name = "keys-manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcoin = { workspace = true }
+nuts = { workspace = true }
+parking_lot = { workspace = true }
