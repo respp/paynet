@@ -1,11 +1,18 @@
 mod amount;
-pub mod dhke;
 mod mint_url;
+mod types;
+
+pub mod dhke;
 pub mod nut00;
 pub mod nut01;
 pub mod nut02;
 pub mod nut03;
+pub mod nut04;
+pub mod nut05;
+pub mod nut06;
+
 pub use amount::*;
+pub use types::*;
 
 use bitcoin::secp256k1::{rand, All, Secp256k1};
 use once_cell::sync::Lazy;
@@ -26,55 +33,62 @@ pub mod traits {
 
         use super::Unit;
 
-        #[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
-        pub enum CurrencyUnit {
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum TestUnit {
             Sat,
             Msat,
             Usd,
             Eur,
         }
 
-        impl Display for CurrencyUnit {
+        impl Display for TestUnit {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 Display::fmt(
                     match self {
-                        CurrencyUnit::Sat => "sat",
-                        CurrencyUnit::Msat => "msat",
-                        CurrencyUnit::Usd => "usd",
-                        CurrencyUnit::Eur => "eur",
+                        TestUnit::Sat => "sat",
+                        TestUnit::Msat => "msat",
+                        TestUnit::Usd => "usd",
+                        TestUnit::Eur => "eur",
                     },
                     f,
                 )
             }
         }
 
-        impl From<CurrencyUnit> for u32 {
-            fn from(value: CurrencyUnit) -> Self {
+        impl From<TestUnit> for u32 {
+            fn from(value: TestUnit) -> Self {
                 match value {
-                    CurrencyUnit::Sat => 0,
-                    CurrencyUnit::Msat => 1,
-                    CurrencyUnit::Usd => 2,
-                    CurrencyUnit::Eur => 3,
+                    TestUnit::Sat => 0,
+                    TestUnit::Msat => 1,
+                    TestUnit::Usd => 2,
+                    TestUnit::Eur => 3,
                 }
             }
         }
 
-        impl FromStr for CurrencyUnit {
+        impl FromStr for TestUnit {
             type Err = Error;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 let unit = match s {
-                    "sat" => CurrencyUnit::Sat,
-                    "msat" => CurrencyUnit::Msat,
-                    "usd" => CurrencyUnit::Usd,
-                    "eur" => CurrencyUnit::Eur,
+                    "sat" => TestUnit::Sat,
+                    "msat" => TestUnit::Msat,
+                    "usd" => TestUnit::Usd,
+                    "eur" => TestUnit::Eur,
                     _ => return Err(Error::CannotConvertUnits),
                 };
                 Ok(unit)
             }
         }
 
-        impl Unit for CurrencyUnit {}
+        impl Unit for TestUnit {}
+
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum TestMethod {
+            Bolt11,
+        }
     }
 }
 
@@ -85,3 +99,19 @@ pub static SECP256K1: Lazy<Secp256k1<All>> = Lazy::new(|| {
     ctx.randomize(&mut rng);
     ctx
 });
+
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum QuoteState {
+    /// Quote has not been paid
+    #[default]
+    Unpaid,
+    /// Quote has been paid and wallet can mint
+    Paid,
+    /// ecash issued for quote
+    Issued,
+    ///
+    Failed,
+}

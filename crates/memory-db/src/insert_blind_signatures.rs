@@ -21,7 +21,7 @@ impl<'args> InsertBlindSignaturesQueryBuilder<'args> {
 
     pub fn add_row(&mut self, blind_message: PublicKey, blind_signature: &BlindSignature) {
         let y = blind_message.to_bytes();
-        let amount = blind_signature.amount.as_i64();
+        let amount = blind_signature.amount.into_i64_repr();
         let keyset_id = blind_signature.keyset_id.as_i64();
         let c = blind_signature.c.to_bytes();
 

@@ -1,0 +1,15 @@
+[package]
+name = "cashu-starknet-invoice-indexer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+invoice-payment-indexer = { workspace = true }
+
+starknet-types-core = { workspace = true }
+
+tokio = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+
+dotenv = { workspace = true }
+anyhow = { workspace = true }

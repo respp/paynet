@@ -28,7 +28,7 @@ impl<'args> InsertSpentProofsQueryBuilder<'args> {
 
     pub fn add_row(&mut self, proof: &'args Proof) -> Result<(), Error> {
         let y = proof.y().map_err(|_| Error::HashOnCurve)?.to_bytes();
-        let amount = proof.amount.as_i64();
+        let amount = proof.amount.into_i64_repr();
         let keyset_id = proof.keyset_id.as_i64();
         let secret: &str = proof.secret.as_ref();
         let c = proof.c.to_bytes();

@@ -36,3 +36,34 @@ CREATE TABLE IF NOT EXISTS proof (
 
 CREATE INDEX IF NOT EXISTS proof_state_index ON proof(state);
 CREATE INDEX IF NOT EXISTS proof_secret_index ON proof(secret);
+
+-- Mint quote
+
+CREATE TABLE IF NOT EXISTS mint_quote (
+    id UUID PRIMARY KEY,
+    unit TEXT NOT NULL,
+    amount INT8 NOT NULL,
+    request TEXT NOT NULL,
+    expiry TIMESTAMPTZ NOT NULL,
+    state INT2 NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS mint_quote_unit ON mint_quote(unit);
+CREATE INDEX IF NOT EXISTS mint_quote_state ON mint_quote(state);
+CREATE INDEX IF NOT EXISTS mint_quote_expiry ON mint_quote(expiry);
+
+-- Melt quote
+
+CREATE TABLE IF NOT EXISTS melt_quote (
+    id UUID PRIMARY KEY,
+    unit TEXT NOT NULL,
+    amount INT8 NOT NULL,
+    fee_reserve INT8 NOT NULL,
+    request TEXT NOT NULL,
+    expiry TIMESTAMPTZ NOT NULL,
+    state INT2 NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS melt_quote_unit ON melt_quote(unit);
+CREATE INDEX IF NOT EXISTS melt_quote_state ON melt_quote(state);
+CREATE INDEX IF NOT EXISTS melt_quote_expiry ON melt_quote(expiry);

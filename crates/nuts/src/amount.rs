@@ -32,6 +32,7 @@ pub struct Amount(u64);
 impl Amount {
     /// Amount zero
     pub const ZERO: Amount = Amount(0);
+    pub const ONE: Amount = Amount(1);
 
     /// Split into parts that are powers of two
     pub fn split(&self) -> Vec<Self> {
@@ -113,8 +114,12 @@ impl Amount {
         })
     }
 
-    pub fn as_i64(&self) -> i64 {
+    pub fn into_i64_repr(&self) -> i64 {
         i64::from_be_bytes(self.0.to_be_bytes())
+    }
+
+    pub fn from_i64_repr(value: i64) -> Self {
+        Self(u64::from_be_bytes(value.to_be_bytes()))
     }
 }
 
@@ -185,12 +190,6 @@ impl From<Amount> for u64 {
     }
 }
 
-impl AsRef<u64> for Amount {
-    fn as_ref(&self) -> &u64 {
-        &self.0
-    }
-}
-
 impl std::ops::Add for Amount {
     type Output = Amount;
 
@@ -232,6 +231,19 @@ impl std::ops::Div for Amount {
 
     fn div(self, other: Self) -> Self::Output {
         Amount(self.0 / other.0)
+    }
+}
+
+#[cfg(feature = "starknet")]
+impl From<Amount> for starknet_types_core::felt::Felt {
+    fn from(value: Amount) -> Self {
+        value.0.into()
+    }
+}
+
+impl From<Amount> for num_bigint::BigUint {
+    fn from(value: Amount) -> Self {
+        Self::from(value.0)
     }
 }
 
@@ -303,25 +315,25 @@ mod tests {
     /// Helper function to convert units
     pub fn to_unit<T>(
         amount: T,
-        current_unit: &CurrencyUnit,
-        target_unit: &CurrencyUnit,
+        current_unit: &TestUnit,
+        target_unit: &TestUnit,
     ) -> Result<Amount, Error>
     where
         T: Into<u64>,
     {
         let amount = amount.into();
         match (current_unit, target_unit) {
-            (CurrencyUnit::Sat, CurrencyUnit::Sat) => Ok(amount.into()),
-            (CurrencyUnit::Msat, CurrencyUnit::Msat) => Ok(amount.into()),
-            (CurrencyUnit::Sat, CurrencyUnit::Msat) => Ok((amount * MSAT_IN_SAT).into()),
-            (CurrencyUnit::Msat, CurrencyUnit::Sat) => Ok((amount / MSAT_IN_SAT).into()),
-            (CurrencyUnit::Usd, CurrencyUnit::Usd) => Ok(amount.into()),
-            (CurrencyUnit::Eur, CurrencyUnit::Eur) => Ok(amount.into()),
+            (TestUnit::Sat, TestUnit::Sat) => Ok(amount.into()),
+            (TestUnit::Msat, TestUnit::Msat) => Ok(amount.into()),
+            (TestUnit::Sat, TestUnit::Msat) => Ok((amount * MSAT_IN_SAT).into()),
+            (TestUnit::Msat, TestUnit::Sat) => Ok((amount / MSAT_IN_SAT).into()),
+            (TestUnit::Usd, TestUnit::Usd) => Ok(amount.into()),
+            (TestUnit::Eur, TestUnit::Eur) => Ok(amount.into()),
             _ => Err(Error::CannotConvertUnits),
         }
     }
 
-    use crate::traits::test_types::CurrencyUnit;
+    use crate::traits::test_types::TestUnit;
 
     use super::*;
 
@@ -446,40 +458,40 @@ mod tests {
     #[test]
     fn test_amount_to_unit() {
         let amount = Amount(1000);
-        let current_unit = CurrencyUnit::Sat;
-        let target_unit = CurrencyUnit::Msat;
+        let current_unit = TestUnit::Sat;
+        let target_unit = TestUnit::Msat;
 
         let converted = to_unit(amount, &current_unit, &target_unit).unwrap();
 
         assert_eq!(converted, Amount(1000000));
 
         let amount = Amount(1000);
-        let current_unit = CurrencyUnit::Msat;
-        let target_unit = CurrencyUnit::Sat;
+        let current_unit = TestUnit::Msat;
+        let target_unit = TestUnit::Sat;
 
         let converted = to_unit(amount, &current_unit, &target_unit).unwrap();
 
         assert_eq!(converted, Amount(1));
 
         let amount = Amount(1);
-        let current_unit = CurrencyUnit::Usd;
-        let target_unit = CurrencyUnit::Usd;
+        let current_unit = TestUnit::Usd;
+        let target_unit = TestUnit::Usd;
 
         let converted = to_unit(amount, &current_unit, &target_unit).unwrap();
 
         assert_eq!(converted, Amount(1));
 
         let amount = Amount(1);
-        let current_unit = CurrencyUnit::Eur;
-        let target_unit = CurrencyUnit::Eur;
+        let current_unit = TestUnit::Eur;
+        let target_unit = TestUnit::Eur;
 
         let converted = to_unit(amount, &current_unit, &target_unit).unwrap();
 
         assert_eq!(converted, Amount(1));
 
         let amount = Amount(1);
-        let current_unit = CurrencyUnit::Sat;
-        let target_unit = CurrencyUnit::Eur;
+        let current_unit = TestUnit::Sat;
+        let target_unit = TestUnit::Eur;
 
         let converted = to_unit(amount, &current_unit, &target_unit);
 

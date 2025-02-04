@@ -1,6 +1,14 @@
 [workspace]
 resolver = "2"
-members = ["crates/bin/mint", "crates/keys-manager", "crates/memory-db", "crates/nuts", "crates/starknet"]
+members = [
+  "crates/bin/node",
+  "crates/bin/indexer",
+  "crates/invoice-payment-indexer",
+  "crates/keys-manager",
+  "crates/memory-db",
+  "crates/nuts",
+  "crates/starknet"
+]
 
 [workspace.dependencies]
 axum = "0.8.1"
@@ -13,6 +21,7 @@ url = "2.5.4"
 ciborium = "0.2.2"
 bitcoin = "0.32.2"
 num-derive = "0.4.2"
+num-bigint = "0.4.2"
 num-traits = "0.2.19"
 once_cell = "1.20.2"
 tracing = "0.1.41"
@@ -24,6 +33,13 @@ dotenv = "0.15.0"
 sqlx = "0.8.2"
 parking_lot = "0.12.3"
 rand = "0.8.5"
+starknet-core = "0.12.1"
+futures = "0.3.31"
+anyhow = "1.0.95"
+apibara-core = { git = "https://github.com/apibara/dna.git", rev = "f1b782e0e86b"}
+apibara-sdk = { git = "https://github.com/apibara/dna.git", rev = "f1b782e0e86b"}
+rusqlite = "0.32.0"
+primitive-types = "0.13.1"
 
 
 # Local crates
@@ -31,6 +47,8 @@ nuts = { path = "crates/nuts" }
 cashu-starknet = { path = "crates/starknet" }
 memory-db  = { path = "crates/memory-db" }
 keys-manager  = { path = "crates/keys-manager" }
+invoice-payment-indexer = { path = "crates/invoice-payment-indexer" }
+
 
 
 

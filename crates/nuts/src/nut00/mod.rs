@@ -99,7 +99,7 @@ pub struct BlindSignature {
 
 /// Blind Message (also called `output`)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BlindMessage {
+pub struct BlindedMessage {
     /// Amount
     ///
     /// The value for the requested [BlindSignature]

@@ -1,0 +1,102 @@
+//! NUT-05: Melting Tokens
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::{
+    nut00::{BlindSignature, BlindedMessage, Proofs},
+    traits::Unit,
+    Amount, QuoteState,
+};
+
+/// NUT05 Error
+#[derive(Debug, Error)]
+pub enum Error {
+    /// Unknown Quote State
+    #[error("Unknown quote state")]
+    UnknownState,
+    /// Amount overflow
+    #[error("Amount Overflow")]
+    AmountOverflow,
+}
+
+/// Melt quote request [NUT-05]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeltQuoteRequest<U: Unit> {
+    /// Invoice to be paid
+    pub request: String,
+    /// Unit wallet would like to pay with
+    pub unit: U,
+}
+
+/// Melt quote response [NUT-05]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MeltQuoteResponse<Q> {
+    /// Quote Id
+    pub quote: Q,
+    /// The amount that needs to be provided
+    pub amount: Amount,
+    /// The fee reserve that is required
+    pub fee_reserve: Amount,
+    /// Quote State
+    pub state: QuoteState,
+    /// Unix timestamp until the quote is valid
+    pub expiry: u64,
+}
+
+/// Melt Request [NUT-05]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeltRequest {
+    /// Quote ID
+    pub quote: String,
+    /// Proofs
+    pub inputs: Proofs,
+    /// Blinded Message that can be used to return change [NUT-08]
+    /// Amount field of BlindedMessages `SHOULD` be set to zero
+    pub outputs: Option<Vec<BlindedMessage>>,
+}
+
+impl MeltRequest {
+    /// Total [`Amount`] of [`Proofs`]
+    pub fn proofs_amount(&self) -> Result<Amount, Error> {
+        Amount::try_sum(self.inputs.iter().map(|proof| proof.amount))
+            .map_err(|_| Error::AmountOverflow)
+    }
+}
+
+/// Melt Method Settings
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MeltMethodSettings<M, U> {
+    /// Payment Method e.g. bolt11
+    pub method: M,
+    /// Currency Unit e.g. sat
+    pub unit: U,
+    /// Min Amount
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_amount: Option<Amount>,
+    /// Max Amount
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_amount: Option<Amount>,
+}
+
+impl<M, U> Settings<M, U>
+where
+    M: PartialEq + Eq + Clone,
+    U: PartialEq + Eq + Clone,
+{
+    pub fn get_settings(&self, method: M, unit: U) -> Option<MeltMethodSettings<M, U>> {
+        self.methods
+            .iter()
+            .find(|&s| method == s.method && unit == s.unit)
+            .cloned()
+    }
+}
+
+/// Melt Settings
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Settings<M, U> {
+    /// Methods to melt
+    pub methods: Vec<MeltMethodSettings<M, U>>,
+    /// Minting disabled
+    pub disabled: bool,
+}

@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use crate::nut00::{BlindMessage, BlindSignature, Proofs};
+use crate::nut00::{BlindSignature, BlindedMessage, Proofs};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PostSwapResponse {
+pub struct SwapResponse {
     pub signatures: Vec<BlindSignature>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct PostSwapRequest {
+pub struct SwapRequest {
     pub inputs: Proofs,
-    pub outputs: Vec<BlindMessage>,
+    pub outputs: Vec<BlindedMessage>,
 }

@@ -11,9 +11,15 @@ url = { workspace = true }
 ciborium = { workspace = true }
 bitcoin = { workspace = true, features = ["base64", "rand-std"]}
 num-traits = { workspace = true }
+num-bigint = { workspace = true }
 once_cell = { workspace = true }
 tracing = { workspace = true }
 hex = { workspace = true }
 
+starknet-types-core = { workspace = true, optional = true }
+
 [dev-dependencies]
 rand = { workspace = true }
+
+[features]
+starknet = ["dep:starknet-types-core"]
