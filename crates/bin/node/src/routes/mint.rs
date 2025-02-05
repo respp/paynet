@@ -3,17 +3,14 @@ use axum::{
     Json,
 };
 use keys_manager::KeysManager;
-use nuts::{
-    nut04::{MintRequest, MintResponse},
-    QuoteState,
-};
+use nuts::nut04::{MintQuoteState, MintRequest, MintResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     errors::{Error, MintError},
     keyset_cache::KeysetCache,
-    logic::{process_outputs, verify_outputs_allow_single_unit},
+    logic::{process_outputs, process_outputs_allow_single_unit},
     methods::Method,
 };
 
@@ -28,22 +25,18 @@ pub async fn mint(
         Method::Starknet => {}
     }
 
-    let mut tx = pool.begin().await?;
-
-    memory_db::set_transaction_isolation_level_to_serializable(&mut tx).await?;
+    let mut tx = memory_db::start_db_tx(&pool).await?;
 
     let (expected_amount, state) =
-        memory_db::get_amount_and_state_for_mint_quote_by_id(&mut tx, mint_request.quote).await?;
+        memory_db::mint_quote::get_amount_and_state(&mut tx, mint_request.quote).await?;
 
-    match state {
-        QuoteState::Unpaid => return Err(MintError::UnpaidQuote.into()),
-        QuoteState::Paid => {}
-        QuoteState::Issued => return Err(MintError::IssuedQuote.into()),
-        QuoteState::Failed => todo!(),
+    if state != MintQuoteState::Paid {
+        return Err(MintError::InvalidQuoteStateAtThisPoint(state).into());
     }
 
     let total_amount =
-        verify_outputs_allow_single_unit(&mut tx, &mut keyset_cache, &mint_request.outputs).await?;
+        process_outputs_allow_single_unit(&mut tx, &mut keyset_cache, &mint_request.outputs)
+            .await?;
 
     if total_amount != expected_amount {
         return Err(MintError::UnbalancedMintAndQuoteAmounts(total_amount, expected_amount).into());
@@ -60,6 +53,7 @@ pub async fn mint(
     insert_blind_signatures_query_builder
         .execute(&mut tx)
         .await?;
+    memory_db::mint_quote::set_state(&mut tx, mint_request.quote, MintQuoteState::Issued).await?;
 
     tx.commit().await?;
 

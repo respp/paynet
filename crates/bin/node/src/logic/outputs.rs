@@ -16,7 +16,7 @@ use crate::{
     Unit,
 };
 
-pub async fn verify_outputs_allow_single_unit(
+pub async fn process_outputs_allow_single_unit(
     conn: &mut PgConnection,
     keyset_cache: &mut KeysetCache,
     outputs: &[BlindedMessage],
@@ -60,7 +60,7 @@ pub async fn verify_outputs_allow_single_unit(
     Ok(total_amount)
 }
 
-pub async fn verify_outputs_allow_multiple_units(
+pub async fn process_outputs_allow_multiple_units(
     conn: &mut PgConnection,
     keyset_cache: &mut KeysetCache,
     outputs: &[BlindedMessage],

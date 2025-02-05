@@ -2,7 +2,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use cashu_starknet::{StarknetU256, STRK_TOKEN_ADDRESS};
+use cashu_starknet::{Asset, StarknetU256};
 use dotenv::dotenv;
 use errors::StarknetError;
 use invoice_payment_indexer::{index_stream, init_apibara_stream};
@@ -87,6 +87,11 @@ async fn main() {
         )
         .route("/v1/mint/{method}", post(routes::mint))
         .route("/v1/melt/quote/{method}", post(routes::melt_quote))
+        .route(
+            "/v1/melt/quote/{method}/{quote_id}",
+            get(routes::melt_quote_state),
+        )
+        .route("/v1/melt/{method}", post(routes::melt))
         .with_state(AppState::new(
             pg_pool,
             &[1, 2, 3, 4, 5],
@@ -130,7 +135,14 @@ async fn main() {
 #[serde(rename_all = "lowercase")]
 pub enum Unit {
     Strk,
-    StrkAtto,
+}
+
+impl Unit {
+    pub fn asset(&self) -> Asset {
+        match self {
+            Unit::Strk => Asset::Strk,
+        }
+    }
 }
 
 // Used for derivation path
@@ -138,7 +150,6 @@ impl From<Unit> for u32 {
     fn from(value: Unit) -> Self {
         match value {
             Unit::Strk => 0,
-            Unit::StrkAtto => 1,
         }
     }
 }
@@ -161,7 +172,6 @@ impl std::fmt::Display for Unit {
         std::fmt::Display::fmt(
             match self {
                 Unit::Strk => "strk",
-                Unit::StrkAtto => "str:atto",
             },
             f,
         )
@@ -170,15 +180,15 @@ impl std::fmt::Display for Unit {
 
 impl nuts::traits::Unit for Unit {}
 
-const STRK_TOKEN_PRECISION: u64 = 1_000_000_000_000_000_000;
+// e-3 strk
+const STRK_UNIT_TO_ASSET_CONVERSION_RATE: u64 = 1_000_000_000_000_000;
 
 impl Unit {
     pub fn convert_amount_into_u256(&self, amount: Amount) -> StarknetU256 {
         match self {
-            Unit::Strk => {
-                StarknetU256::from(U256::from(u64::from(amount)) * U256::from(STRK_TOKEN_PRECISION))
-            }
-            Unit::StrkAtto => StarknetU256::from(amount),
+            Unit::Strk => StarknetU256::from(
+                U256::from(u64::from(amount)) * U256::from(STRK_UNIT_TO_ASSET_CONVERSION_RATE),
+            ),
         }
     }
 
@@ -188,8 +198,8 @@ impl Unit {
     ) -> Result<(Amount, StarknetU256), StarknetError> {
         match self {
             Unit::Strk => {
-                let (quotient, rem) =
-                    primitive_types::U256::from(&amount).div_mod(U256::from(STRK_TOKEN_PRECISION));
+                let (quotient, rem) = primitive_types::U256::from(&amount)
+                    .div_mod(U256::from(STRK_UNIT_TO_ASSET_CONVERSION_RATE));
                 Ok((
                     Amount::from(
                         u64::try_from(quotient)
@@ -198,24 +208,12 @@ impl Unit {
                     StarknetU256::from(rem),
                 ))
             }
-            Unit::StrkAtto => Ok((
-                Amount::from(
-                    u64::try_from(primitive_types::U256::from(&amount))
-                        .map_err(|_| StarknetError::StarknetAmountTooHigh(*self, amount))?,
-                ),
-                StarknetU256::ZERO,
-            )),
         }
     }
 
-    pub fn is_asset_supported(&self, asset: Felt) -> bool {
-        if asset == STRK_TOKEN_ADDRESS {
-            match self {
-                Unit::Strk => true,
-                Unit::StrkAtto => true,
-            }
-        } else {
-            false
+    pub fn is_asset_supported(&self, asset: Asset) -> bool {
+        match (self, asset) {
+            (Unit::Strk, Asset::Strk) => true,
         }
     }
 }

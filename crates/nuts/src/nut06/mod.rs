@@ -5,7 +5,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use crate::{nut05, Error};
+use crate::nut05;
 
 use super::nut01::PublicKey;
 use super::nut04;

@@ -12,6 +12,7 @@ pub mod nut05;
 pub mod nut06;
 
 pub use amount::*;
+use thiserror::Error;
 pub use types::*;
 
 use bitcoin::secp256k1::{rand, All, Secp256k1};
@@ -100,18 +101,6 @@ pub static SECP256K1: Lazy<Secp256k1<All>> = Lazy::new(|| {
     ctx
 });
 
-#[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum QuoteState {
-    /// Quote has not been paid
-    #[default]
-    Unpaid,
-    /// Quote has been paid and wallet can mint
-    Paid,
-    /// ecash issued for quote
-    Issued,
-    ///
-    Failed,
-}
+#[derive(Debug, Error)]
+#[error("Invalid Value for QuoteState")]
+pub struct InvalidValueForQuoteState;

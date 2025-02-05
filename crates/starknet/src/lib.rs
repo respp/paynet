@@ -7,10 +7,34 @@ use thiserror::Error;
 pub const STRK_TOKEN_ADDRESS: Felt =
     Felt::from_hex_unchecked("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Asset {
+    Strk,
+}
+
+impl core::fmt::Display for Asset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Asset::Strk => "strk",
+            }
+        )
+    }
+}
+
+impl Asset {
+    pub fn address(&self) -> Felt {
+        STRK_TOKEN_ADDRESS
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeltPaymentRequest {
     pub recipient: Felt,
-    pub asset: Felt,
+    pub asset: Asset,
     pub amount: StarknetU256,
 }
 
@@ -24,7 +48,7 @@ pub struct MintPaymentRequest<C> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PayInvoiceCalldata {
     pub invoice_id: u128,
-    pub asset: Felt,
+    pub asset: Asset,
     pub amount: StarknetU256,
 }
 

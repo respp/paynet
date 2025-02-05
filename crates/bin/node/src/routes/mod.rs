@@ -8,5 +8,7 @@ mod mint;
 pub use mint::mint;
 mod melt_quote;
 pub use melt_quote::melt_quote;
+mod melt_quote_state;
+pub use melt_quote_state::melt_quote_state;
 mod melt;
-// pub use melt::melt;
+pub use melt::melt;

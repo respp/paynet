@@ -3,11 +3,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{
-    nut00::{BlindSignature, BlindedMessage, Proofs},
-    traits::Unit,
-    Amount, QuoteState,
-};
+use crate::{nut00::Proofs, traits::Unit, Amount, InvalidValueForQuoteState};
 
 /// NUT05 Error
 #[derive(Debug, Error)]
@@ -18,6 +14,57 @@ pub enum Error {
     /// Amount overflow
     #[error("Amount Overflow")]
     AmountOverflow,
+}
+
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MeltQuoteState {
+    /// Quote has not been paid
+    #[default]
+    Unpaid,
+    /// on-chain payment is being done
+    Pending,
+    /// Payment has been done on chain
+    Paid,
+}
+
+impl TryFrom<i16> for MeltQuoteState {
+    type Error = InvalidValueForQuoteState;
+
+    fn try_from(value: i16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(MeltQuoteState::Unpaid),
+            1 => Ok(MeltQuoteState::Pending),
+            2 => Ok(MeltQuoteState::Paid),
+            _ => Err(InvalidValueForQuoteState),
+        }
+    }
+}
+
+impl From<MeltQuoteState> for i16 {
+    fn from(value: MeltQuoteState) -> Self {
+        match value {
+            MeltQuoteState::Unpaid => 0,
+            MeltQuoteState::Pending => 1,
+            MeltQuoteState::Paid => 2,
+        }
+    }
+}
+
+impl core::fmt::Display for MeltQuoteState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MeltQuoteState::Unpaid => "UNPAID",
+                MeltQuoteState::Pending => "PENDING",
+                MeltQuoteState::Paid => "PAID",
+            }
+        )
+    }
 }
 
 /// Melt quote request [NUT-05]
@@ -39,29 +86,27 @@ pub struct MeltQuoteResponse<Q> {
     /// The fee reserve that is required
     pub fee_reserve: Amount,
     /// Quote State
-    pub state: QuoteState,
+    pub state: MeltQuoteState,
     /// Unix timestamp until the quote is valid
     pub expiry: u64,
+    /// Change
+    #[cfg(feature = "nut08")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change: Option<Vec<BlindSignature>>,
 }
 
 /// Melt Request [NUT-05]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MeltRequest {
+pub struct MeltRequest<Q> {
     /// Quote ID
-    pub quote: String,
+    pub quote: Q,
     /// Proofs
     pub inputs: Proofs,
     /// Blinded Message that can be used to return change [NUT-08]
     /// Amount field of BlindedMessages `SHOULD` be set to zero
+    #[cfg(feature = "nut08")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<BlindedMessage>>,
-}
-
-impl MeltRequest {
-    /// Total [`Amount`] of [`Proofs`]
-    pub fn proofs_amount(&self) -> Result<Amount, Error> {
-        Amount::try_sum(self.inputs.iter().map(|proof| proof.amount))
-            .map_err(|_| Error::AmountOverflow)
-    }
 }
 
 /// Melt Method Settings

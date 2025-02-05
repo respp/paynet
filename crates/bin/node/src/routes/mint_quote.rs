@@ -3,11 +3,8 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use cashu_starknet::{MintPaymentRequest, PayInvoiceCalldata, STRK_TOKEN_ADDRESS};
-use nuts::{
-    nut04::{MintQuoteRequest, MintQuoteResponse},
-    QuoteState,
-};
+use cashu_starknet::{MintPaymentRequest, PayInvoiceCalldata};
+use nuts::nut04::{MintQuoteRequest, MintQuoteResponse, MintQuoteState};
 use sqlx::PgPool;
 use starknet_types_core::felt::Felt;
 use uuid::Uuid;
@@ -81,9 +78,7 @@ async fn new_starknet_mint_quote(
     let expiry = unix_time() + mint_ttl;
     let quote = Uuid::new_v4();
 
-    let asset = match mint_quote_request.unit {
-        Unit::Strk | Unit::StrkAtto => STRK_TOKEN_ADDRESS,
-    };
+    let asset = mint_quote_request.unit.asset();
     let amount = mint_quote_request
         .unit
         .convert_amount_into_u256(mint_quote_request.amount);
@@ -103,7 +98,7 @@ async fn new_starknet_mint_quote(
     })?;
 
     let mut conn = pool.acquire().await?;
-    memory_db::insert_new_mint_quote(
+    memory_db::mint_quote::insert_new(
         &mut conn,
         quote,
         mint_quote_request.unit,
@@ -116,7 +111,7 @@ async fn new_starknet_mint_quote(
     Ok(MintQuoteResponse {
         quote,
         request,
-        state: QuoteState::Unpaid,
+        state: MintQuoteState::Unpaid,
         expiry,
     })
 }

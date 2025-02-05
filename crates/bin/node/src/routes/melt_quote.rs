@@ -5,7 +5,7 @@ use axum::{
 use cashu_starknet::{MeltPaymentRequest, StarknetU256};
 use num_traits::CheckedAdd;
 use nuts::{
-    nut05::{MeltMethodSettings, MeltQuoteRequest, MeltQuoteResponse},
+    nut05::{MeltMethodSettings, MeltQuoteRequest, MeltQuoteResponse, MeltQuoteState},
     Amount,
 };
 use sqlx::PgPool;
@@ -97,7 +97,7 @@ async fn handle_starknet_melt_quote(
     let fee_reserve = Amount::ONE;
 
     let mut conn = pool.acquire().await?;
-    memory_db::insert_new_melt_quote(
+    memory_db::melt_quote::insert_new(
         &mut conn,
         quote,
         melt_quote_request.unit,
@@ -112,7 +112,7 @@ async fn handle_starknet_melt_quote(
         quote,
         amount: required_amount,
         fee_reserve,
-        state: nuts::QuoteState::Unpaid,
+        state: MeltQuoteState::Unpaid,
         expiry,
     })
 }

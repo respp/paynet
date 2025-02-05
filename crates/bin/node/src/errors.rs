@@ -1,7 +1,6 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use cashu_starknet::StarknetU256;
-use nuts::{dhke, nut00::CashuError, Amount};
-use starknet_types_core::felt::Felt;
+use cashu_starknet::{Asset, StarknetU256};
+use nuts::{dhke, nut00::CashuError, nut04::MintQuoteState, nut05::MeltQuoteState, Amount};
 use thiserror::Error;
 
 use crate::{methods::Method, Unit};
@@ -61,7 +60,7 @@ pub enum SwapError {
     #[error("All input units should be present as output")]
     UnbalancedUnits,
     /// Transaction unbalanced
-    #[error("For unit {0}, Inputs: `{1}`, Outputs: `{2}`, Expected Fee: `{3}`")]
+    #[error("For asset {0}, Inputs: `{1}`, Outputs: `{2}`, Expected Fee: `{3}`")]
     TransactionUnbalanced(Unit, Amount, Amount, u16),
     #[error("Duplicate input")]
     DuplicateInput,
@@ -73,12 +72,10 @@ pub enum SwapError {
 pub enum MintError {
     #[error("Method does not support description field")]
     DescriptionNotSupported,
-    #[error("This quote has already been issued")]
-    IssuedQuote,
-    #[error("This quote has not been paid yet")]
-    UnpaidQuote,
     #[error("Mint request amounts sum is {0} for a quote of {1}")]
     UnbalancedMintAndQuoteAmounts(Amount, Amount),
+    #[error("Invalid quote state {0} at this poin of the flow")]
+    InvalidQuoteStateAtThisPoint(MintQuoteState),
 }
 
 #[derive(Debug, Error)]
@@ -95,12 +92,20 @@ pub enum QuoteError {
     AmountTooLow(Amount, Amount),
     #[error("Amount must bellow {0}, got {1}")]
     AmountTooHigh(Amount, Amount),
+    #[error("This quote has already been issued")]
+    IssuedQuote,
 }
 
 #[derive(Debug, Error)]
 pub enum MeltError {
     #[error("Asset {0} is not supported by unit {1}")]
-    InvalidAssetForUnit(Felt, Unit),
+    InvalidAssetForUnit(Asset, Unit),
+    #[error("Quote specifed {0}, inputs provided {1}")]
+    InvalidInputsUnit(Unit, Unit),
+    #[error("Melt request amounts sum is {0} for a quote of {1}")]
+    UnbalancedMeltAndQuoteAmounts(Amount, Amount),
+    #[error("Invalid quote state {0} at this point of the flow")]
+    InvalidQuoteStateAtThisPoint(MeltQuoteState),
 }
 
 #[derive(Debug, Error)]

@@ -22,3 +22,4 @@ Cargo.lock
 
 .env
 .sqlx
+.DS_Store

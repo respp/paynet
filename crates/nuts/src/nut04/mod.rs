@@ -1,11 +1,61 @@
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::{
     nut00::{BlindSignature, BlindedMessage},
     traits::Unit,
-    Amount, QuoteState,
+    Amount, InvalidValueForQuoteState,
 };
+
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MintQuoteState {
+    /// Quote has not been paid
+    #[default]
+    Unpaid,
+    /// Quote has been paid and wallet can mint
+    Paid,
+    /// ecash issued for quote
+    Issued,
+}
+
+impl core::fmt::Display for MintQuoteState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MintQuoteState::Unpaid => "UNPAID",
+                MintQuoteState::Paid => "PAID",
+                MintQuoteState::Issued => "ISSUED",
+            }
+        )
+    }
+}
+
+impl TryFrom<i16> for MintQuoteState {
+    type Error = InvalidValueForQuoteState;
+
+    fn try_from(value: i16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(MintQuoteState::Unpaid),
+            1 => Ok(MintQuoteState::Paid),
+            2 => Ok(MintQuoteState::Issued),
+            _ => Err(InvalidValueForQuoteState),
+        }
+    }
+}
+
+impl From<MintQuoteState> for i16 {
+    fn from(value: MintQuoteState) -> Self {
+        match value {
+            MintQuoteState::Unpaid => 0,
+            MintQuoteState::Paid => 1,
+            MintQuoteState::Issued => 2,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MintQuoteRequest<U: Unit> {
@@ -18,25 +68,8 @@ pub struct MintQuoteRequest<U: Unit> {
 pub struct MintQuoteResponse<Q> {
     pub quote: Q,
     pub request: String,
-    pub state: QuoteState,
+    pub state: MintQuoteState,
     pub expiry: u64,
-}
-
-#[derive(Debug, Error)]
-#[error("Invalid Value for QuoteState")]
-pub struct InvalidValueForQuoteState;
-
-impl TryFrom<i16> for QuoteState {
-    type Error = InvalidValueForQuoteState;
-
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(QuoteState::Unpaid),
-            1 => Ok(QuoteState::Paid),
-            2 => Ok(QuoteState::Issued),
-            _ => Err(InvalidValueForQuoteState),
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

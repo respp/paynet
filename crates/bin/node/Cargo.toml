@@ -27,3 +27,7 @@ starknet-types-core = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "uuid"] }
 rusqlite = { workspace = true }
 
+[features]
+nut08 = ["nuts/nut08"]
+uncollateralized = []
+

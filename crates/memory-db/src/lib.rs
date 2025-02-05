@@ -1,16 +1,15 @@
 use std::str::FromStr;
 
-use nuts::{
-    nut01::PublicKey, nut02::KeysetId, nut04::MintQuoteResponse, traits::Unit, Amount, QuoteState,
-};
-use sqlx::{types::time::OffsetDateTime, PgConnection};
+use nuts::{nut01::PublicKey, nut02::KeysetId, traits::Unit, Amount};
+use sqlx::{Connection, PgConnection, Pool, Postgres, Transaction};
 use thiserror::Error;
 
 mod insert_spent_proofs;
 pub use insert_spent_proofs::InsertSpentProofsQueryBuilder;
 mod insert_blind_signatures;
 pub use insert_blind_signatures::InsertBlindSignaturesQueryBuilder;
-use uuid::Uuid;
+pub mod melt_quote;
+pub mod mint_quote;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -140,106 +139,6 @@ pub async fn get_keyset_input_fee(
     Ok(input_fee_ppk)
 }
 
-pub async fn insert_new_mint_quote<U: Unit>(
-    conn: &mut PgConnection,
-    quote_id: Uuid,
-    unit: U,
-    amount: Amount,
-    request: &str,
-    expiry: u64,
-) -> Result<(), Error> {
-    let expiry: i64 = expiry
-        .try_into()
-        .map_err(|_| Error::RuntimeToDbConversion)?;
-    let expiry =
-        OffsetDateTime::from_unix_timestamp(expiry).map_err(|_| Error::RuntimeToDbConversion)?;
-
-    sqlx::query!(
-        r#"INSERT INTO mint_quote (id, unit, amount, request, expiry, state) VALUES ($1, $2, $3, $4, $5, 0)"#,
-        quote_id,
-        &unit.to_string(),
-        amount.into_i64_repr(),
-        request,
-        expiry,
-    ).execute(conn).await?;
-
-    Ok(())
-}
-
-pub async fn insert_new_melt_quote<U: Unit>(
-    conn: &mut PgConnection,
-    quote_id: Uuid,
-    unit: U,
-    amount: Amount,
-    fee: Amount,
-    request: &str,
-    expiry: u64,
-) -> Result<(), Error> {
-    let expiry: i64 = expiry
-        .try_into()
-        .map_err(|_| Error::RuntimeToDbConversion)?;
-    let expiry =
-        OffsetDateTime::from_unix_timestamp(expiry).map_err(|_| Error::RuntimeToDbConversion)?;
-
-    sqlx::query!(
-        r#"INSERT INTO melt_quote (id, unit, amount, fee_reserve, request, expiry, state) VALUES ($1, $2, $3, $4, $5, $6, 0)"#,
-        quote_id,
-        &unit.to_string(),
-        amount.into_i64_repr(),
-        fee.into_i64_repr(),
-        request,
-        expiry,
-    ).execute(conn).await?;
-
-    Ok(())
-}
-
-pub async fn build_mint_quote_response(
-    conn: &mut PgConnection,
-    quote_id: Uuid,
-) -> Result<MintQuoteResponse<Uuid>, Error> {
-    let record = sqlx::query!(
-        r#"SELECT request, state, expiry  FROM mint_quote where id = $1"#,
-        quote_id
-    )
-    .fetch_one(conn)
-    .await?;
-
-    let state = record
-        .state
-        .try_into()
-        .map_err(|_| Error::DbToRuntimeConversion)?;
-    let expiry = record
-        .expiry
-        .unix_timestamp()
-        .try_into()
-        .map_err(|_| Error::DbToRuntimeConversion)?;
-
-    Ok(MintQuoteResponse {
-        quote: quote_id,
-        request: record.request,
-        state,
-        expiry,
-    })
-}
-
-pub async fn get_amount_and_state_for_mint_quote_by_id(
-    conn: &mut PgConnection,
-    quote_id: Uuid,
-) -> Result<(Amount, QuoteState), Error> {
-    let record = sqlx::query!(
-        r#"SELECT amount, state FROM mint_quote where id = $1"#,
-        quote_id
-    )
-    .fetch_one(conn)
-    .await?;
-
-    let amount = Amount::from_i64_repr(record.amount);
-    let state = QuoteState::try_from(record.state).map_err(|_| Error::DbToRuntimeConversion)?;
-
-    Ok((amount, state))
-}
-
 /// Handle concurency at the database level
 /// If one transaction alter a field that is used in another one
 /// in a way that would result in a different statement output,
@@ -252,9 +151,9 @@ pub async fn get_amount_and_state_for_mint_quote_by_id(
 /// If we were not doing this, we would have to acquire a lock for each proof, blind_signature
 /// entry we read in db so that no other swap make use of them during this time.
 /// I believe it's better to leave it to the db rather than manage it manualy.
-pub async fn set_transaction_isolation_level_to_serializable(
+async fn set_transaction_isolation_level_to_serializable(
     conn: &mut PgConnection,
-) -> Result<(), Error> {
+) -> Result<(), sqlx::Error> {
     sqlx::query!("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;")
         .execute(conn)
         .await?;
@@ -280,4 +179,24 @@ pub async fn sum_amount_of_unit_in_circulation<U: Unit>(
     let amount = Amount::from_i64_repr(record.sum);
 
     Ok(amount)
+}
+
+pub async fn start_db_tx(
+    pool: &Pool<Postgres>,
+) -> Result<Transaction<'static, Postgres>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    set_transaction_isolation_level_to_serializable(&mut tx).await?;
+
+    Ok(tx)
+}
+
+pub async fn start_db_tx_from_conn(
+    conn: &mut PgConnection,
+) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
+    let mut tx = conn.begin().await?;
+
+    set_transaction_isolation_level_to_serializable(&mut tx).await?;
+
+    Ok(tx)
 }
