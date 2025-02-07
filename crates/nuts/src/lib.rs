@@ -10,6 +10,8 @@ pub mod nut03;
 pub mod nut04;
 pub mod nut05;
 pub mod nut06;
+#[cfg(feature = "nut19")]
+pub mod nut19;
 
 pub use amount::*;
 use thiserror::Error;

@@ -23,4 +23,4 @@ rand = { workspace = true }
 
 [features]
 starknet = ["dep:starknet-types-core"]
-nut08 = []
+nut19 = []

@@ -89,10 +89,6 @@ pub struct MeltQuoteResponse<Q> {
     pub state: MeltQuoteState,
     /// Unix timestamp until the quote is valid
     pub expiry: u64,
-    /// Change
-    #[cfg(feature = "nut08")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub change: Option<Vec<BlindSignature>>,
 }
 
 /// Melt Request [NUT-05]
@@ -102,11 +98,6 @@ pub struct MeltRequest<Q> {
     pub quote: Q,
     /// Proofs
     pub inputs: Proofs,
-    /// Blinded Message that can be used to return change [NUT-08]
-    /// Amount field of BlindedMessages `SHOULD` be set to zero
-    #[cfg(feature = "nut08")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub outputs: Option<Vec<BlindedMessage>>,
 }
 
 /// Melt Method Settings

@@ -47,41 +47,48 @@ impl fmt::Display for KeySetVersion {
 /// which mint or keyset it was generated from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
-pub struct KeysetId([u8; Self::BYTELEN + 1]);
+#[serde(rename = "id")]
+pub struct KeysetId {
+    version: KeySetVersion,
+    id: [u8; Self::BYTELEN],
+}
 
 impl KeysetId {
     pub const BYTELEN: usize = 7;
     pub const STRLEN: usize = Self::BYTELEN * 2;
 
-    pub fn new(_: KeySetVersion, id: [u8; Self::BYTELEN]) -> Self {
-        let mut inner = [0; Self::BYTELEN + 1];
-        inner[1..].copy_from_slice(&id);
-
-        Self(inner)
+    pub fn new(version: KeySetVersion, id: [u8; Self::BYTELEN]) -> Self {
+        Self { version, id }
     }
 
     pub fn version(&self) -> KeySetVersion {
-        KeySetVersion::Version00
+        self.version
     }
 
     pub fn id(&self) -> [u8; Self::BYTELEN] {
-        self.0[1..].try_into().unwrap()
+        self.id
     }
 
     /// [`Id`] to bytes
-    pub fn bytes(&self) -> [u8; Self::BYTELEN + 1] {
-        self.0
+    pub fn to_bytes(&self) -> [u8; Self::BYTELEN + 1] {
+        let mut bytes = [0; Self::BYTELEN + 1];
+
+        bytes[0] = self.version.into();
+        bytes[1..].copy_from_slice(&self.id);
+
+        bytes
     }
 
     pub fn as_i64(&self) -> i64 {
-        i64::from_be_bytes(self.0)
+        i64::from_be_bytes(self.to_bytes())
     }
 
     /// [`Id`] from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let inner: [u8; Self::BYTELEN + 1] = bytes.try_into()?;
-        let _ = KeySetVersion::try_from(inner[0])?;
-        Ok(Self(inner))
+        Ok(Self {
+            version: KeySetVersion::try_from(bytes[0])?,
+            id: bytes[1..].try_into()?,
+        })
     }
 }
 
@@ -106,17 +113,11 @@ impl FromIterator<PublicKey> for KeysetId {
     }
 }
 
-impl AsRef<[u8]> for KeysetId {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
 // Used to generate a compressed unique identifier as part of the NUT13 spec
 // This is a one-way function
 impl From<KeysetId> for u32 {
     fn from(value: KeysetId) -> Self {
-        let hex_bytes: [u8; 8] = value.bytes();
+        let hex_bytes: [u8; 8] = value.to_bytes();
 
         let int = u64::from_be_bytes(hex_bytes);
 
@@ -126,7 +127,7 @@ impl From<KeysetId> for u32 {
 
 impl fmt::Display for KeysetId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("{}{}", self.version(), hex::encode(self.id())))
+        f.write_str(&format!("{}{}", self.version, hex::encode(self.id)))
     }
 }
 
@@ -138,14 +139,12 @@ impl FromStr for KeysetId {
             return Err(Error::Length);
         }
 
-        let version = hex::decode(&s[..2])?[0];
-        let mut inner = [0; Self::BYTELEN + 1];
-        inner[0] = version;
-        let id = hex::decode(&s[2..])?;
+        let version = hex::decode(&s[..2])?[0].try_into()?;
+        let id = hex::decode(&s[2..])?
+            .try_into()
+            .map_err(|_| Error::Length)?;
 
-        inner[1..].copy_from_slice(&id);
-
-        Ok(Self(inner))
+        Ok(Self { version, id })
     }
 }
 

@@ -76,46 +76,74 @@ async fn main() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         let _handle = tokio::spawn(index_stream(conn, stream));
     }
+    let nuts_settings = NutsSettings {
+        nut04: nuts::nut04::Settings {
+            methods: vec![MintMethodSettings {
+                method: Method::Starknet,
+                unit: Unit::Strk,
+                min_amount: Some(Amount::ONE),
+                max_amount: None,
+                description: true,
+            }],
+            disabled: false,
+        },
+        nut05: nuts::nut05::Settings {
+            methods: vec![MeltMethodSettings {
+                method: Method::Starknet,
+                unit: Unit::Strk,
+                min_amount: Some(Amount::ONE),
+                max_amount: None,
+            }],
+            disabled: false,
+        },
+        #[cfg(feature = "nut19")]
+        nut19: nuts::nut19::Settings {
+            ttl: Some(3600),
+            cached_endpoints: vec![
+                nuts::nut19::CachedEndpoint {
+                    method: nuts::nut19::Method::Post,
+                    path: nuts::nut19::Path::MintStarknet,
+                },
+                nuts::nut19::CachedEndpoint {
+                    method: nuts::nut19::Method::Post,
+                    path: nuts::nut19::Path::Swap,
+                },
+                nuts::nut19::CachedEndpoint {
+                    method: nuts::nut19::Method::Post,
+                    path: nuts::nut19::Path::MeltStarknet,
+                },
+            ],
+        },
+    };
+    let cached_routes = {
+        let router = Router::new()
+            .route("/v1/mint/{method}", post(routes::mint))
+            .route("/v1/swap", post(routes::swap))
+            .route("/v1/melt/{method}", post(routes::melt));
 
-    // build our application with a route
+        #[cfg(feature = "nut19")]
+        let router = router.layer(axum_response_cache::CacheLayer::with_lifespan(
+            nuts_settings.nut19.ttl.unwrap_or(300),
+        ));
+
+        router
+    };
     let app = Router::new()
-        .route("/v1/swap", post(routes::swap))
+        .merge(cached_routes)
         .route("/v1/mint/quote/{method}", post(routes::mint_quote))
         .route(
             "/v1/mint/quote/{method}/{quote_id}",
             get(routes::mint_quote_state),
         )
-        .route("/v1/mint/{method}", post(routes::mint))
         .route("/v1/melt/quote/{method}", post(routes::melt_quote))
         .route(
             "/v1/melt/quote/{method}/{quote_id}",
             get(routes::melt_quote_state),
         )
-        .route("/v1/melt/{method}", post(routes::melt))
         .with_state(AppState::new(
             pg_pool,
             &[1, 2, 3, 4, 5],
-            NutsSettings {
-                nut04: nuts::nut04::Settings {
-                    methods: vec![MintMethodSettings {
-                        method: Method::Starknet,
-                        unit: Unit::Strk,
-                        min_amount: Some(Amount::ONE),
-                        max_amount: None,
-                        description: true,
-                    }],
-                    disabled: false,
-                },
-                nut05: nuts::nut05::Settings {
-                    methods: vec![MeltMethodSettings {
-                        method: Method::Starknet,
-                        unit: Unit::Strk,
-                        min_amount: Some(Amount::ONE),
-                        max_amount: None,
-                    }],
-                    disabled: false,
-                },
-            },
+            nuts_settings,
             QuoteTTLConfig {
                 mint_ttl: 3600,
                 melt_ttl: 3600,

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 axum = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+tower = { workspace = true, features = ["timeout"] }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
 parking_lot = { workspace = true, features = ["arc_lock"] }
@@ -27,7 +28,10 @@ starknet-types-core = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "uuid"] }
 rusqlite = { workspace = true }
 
+axum-response-cache = { workspace = true, optional = true }
+
 [features]
-nut08 = ["nuts/nut08"]
+default = ["nut19"]
+nut19 = ["nuts/nut19", "dep:axum-response-cache"]
 uncollateralized = []
 
