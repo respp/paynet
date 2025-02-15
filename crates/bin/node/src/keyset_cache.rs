@@ -1,17 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
-use memory_db::KeysetInfo;
-use nuts::{
-    nut01::{KeyPair, SetKeyPairs},
-    nut02::KeysetId,
-    Amount,
-};
+use cashu_starknet::Unit;
+use nuts::nut02::KeysetId;
 use parking_lot::RwLock;
 use sqlx::PgConnection;
 
-use keys_manager::KeysManager;
-
-use crate::{errors::Error, Unit};
+use crate::errors::Error;
 
 #[derive(Debug, Clone)]
 pub struct CachedKeysetInfo {
@@ -45,7 +39,6 @@ impl From<memory_db::KeysetInfo<Unit>> for CachedKeysetInfo {
 #[derive(Debug, Default, Clone)]
 pub struct KeysetCache {
     keysets: Arc<RwLock<HashMap<KeysetId, CachedKeysetInfo>>>,
-    keys: Arc<RwLock<HashMap<KeysetId, SetKeyPairs>>>,
 }
 
 impl KeysetCache {
@@ -74,48 +67,5 @@ impl KeysetCache {
         }
 
         Ok(keyset_info)
-    }
-
-    pub async fn get_key(
-        &mut self,
-        conn: &mut PgConnection,
-        keys_manager: &KeysManager,
-        keyset_id: KeysetId,
-        amount: &Amount,
-    ) -> Result<KeyPair, Error> {
-        // Happy path: keys are already loaded in the cache
-        {
-            let keys_read_lock = self.keys.read();
-            if let Some(keys) = keys_read_lock.get(&keyset_id) {
-                let keypair = keys.get(amount).ok_or(Error::InvalidAmountKey)?;
-                return Ok(keypair.clone());
-            }
-        }
-
-        // Recover the keyset from the keyset infos stored in db
-        let keyset_info: KeysetInfo<Unit> = memory_db::get_keyset(conn, &keyset_id).await?;
-        let keyset = keys_manager.generate_keyset(
-            keyset_info.unit(),
-            keyset_info.derivation_path_index(),
-            keyset_info.max_order(),
-        );
-        if keyset.id != keyset_id {
-            return Err(Error::GeneratedKeysetIdIsDifferentFromOriginal);
-        }
-
-        // Clone the keypair we want to return
-        let keypair = keyset
-            .keys
-            .get(amount)
-            .ok_or(Error::InvalidAmountKey)?
-            .clone();
-
-        // Save the keys in the cache
-        {
-            let mut keys_write_lock = self.keys.write();
-            keys_write_lock.insert(keyset_id, keyset.keys);
-        }
-
-        Ok(keypair)
     }
 }

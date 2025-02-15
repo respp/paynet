@@ -1,22 +1,24 @@
 use std::sync::{atomic::AtomicU64, Arc};
 
 use axum::extract::FromRef;
-use keys_manager::KeysManager;
+use cashu_starknet::Unit;
 use nuts::{nut06::NutsSettings, QuoteTTLConfig};
-use parking_lot::RwLock;
 use sqlx::PgPool;
+use tokio::sync::RwLock;
+use tonic::transport::Channel;
 
-use crate::{keyset_cache::KeysetCache, methods::Method, Unit};
+use crate::{keyset_cache::KeysetCache, methods::Method};
 
 pub type NutsSettingsState = Arc<RwLock<NutsSettings<Method, Unit>>>;
 pub type ArcQuoteTTLConfigState = Arc<QuoteTTLConfigState>;
+pub type SharedSignerClient = Arc<RwLock<cashu_signer::SignerClient<Channel>>>;
 
 // the application state
 #[derive(Debug, Clone, FromRef)]
 pub struct AppState {
     pg_pool: PgPool,
-    keys_manager: KeysManager,
     keyset_cache: KeysetCache,
+    signer_client: SharedSignerClient,
     nuts: NutsSettingsState,
     quote_ttl: Arc<QuoteTTLConfigState>,
 }
@@ -24,16 +26,16 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         pg_pool: PgPool,
-        seed: &[u8],
+        signer_client: cashu_signer::SignerClient<Channel>,
         nuts_settings: NutsSettings<Method, Unit>,
         quote_ttl: QuoteTTLConfig,
     ) -> Self {
         Self {
             pg_pool,
-            keys_manager: KeysManager::new(seed),
             keyset_cache: Default::default(),
             nuts: Arc::new(RwLock::new(nuts_settings)),
             quote_ttl: Arc::new(quote_ttl.into()),
+            signer_client: Arc::new(RwLock::new(signer_client)),
         }
     }
 }

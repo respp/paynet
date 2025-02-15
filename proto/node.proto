@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package cashu_node;
+
+import "core.proto";
+
+service Node {
+  // Swap
+  rpc Swap (SwapRequest) returns (SwapResponse);
+  // Mint
+  rpc MintQuote (MintQuoteRequest) returns (MintQuoteResponse);
+  rpc Mint (MintRequest) returns (MintResponse);
+  // Melt
+  rpc Melt (MeltRequest) returns (MeltResponse);
+
+}
+
+message MintQuoteRequest {
+  uint64 amount = 1;
+  string unit = 2;
+  optional string description = 3; 
+}
+
+message MintQuoteResponse {
+  string quote = 1;
+  string request = 2;
+  MintQuoreState state = 3; 
+  uint64 expiry = 4;
+}
+
+enum MintQuoteState {
+  MQS_UNSPECIFIED = 0;
+  MQS_UNPAID = 1;
+  MQS_PAID = 2;
+  MQS_ISSUED = 3;
+}
+
+message MintRequest {
+  string quote = 1;
+  repeated BlindedMessages outputs = 2;
+}
+
+message MintResponse {
+  repeated BlindSignature signatures = 1;
+}
+
+message MeltRequest {
+  string request = 1;
+  repeated Proof intputs = 2;
+}
+
+message MeltResponse {
+  string quote = 1;
+  uint64 amount = 2;
+  uint64 fee = 3;
+  MeltState state = 4;
+  uint64 expiry = 5;
+}
+
+enum MeltState {
+  MQS_UNSPECIFIED = 0;
+  MQS_UNPAID = 1;
+  MQS_PENDING = 2;
+  MQS_PAID = 3;
+}
+
+message SwapRequest {
+  repeated Proofs inputs = 1;
+  repeated BlindedMessage outputs = 2;
+}
+

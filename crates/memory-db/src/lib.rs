@@ -200,3 +200,7 @@ pub async fn start_db_tx_from_conn(
 
     Ok(tx)
 }
+
+pub async fn run_migrations(pool: &Pool<Postgres>) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("./db/migrations/").run(pool).await
+}

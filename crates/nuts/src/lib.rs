@@ -26,6 +26,8 @@ pub mod traits {
         str::FromStr,
     };
 
+    pub trait Method: Debug + Display + FromStr {}
+
     pub trait Unit: FromStr + Sized + Debug + Copy + Clone + Display + Into<u32> {}
 
     #[cfg(test)]
@@ -34,7 +36,7 @@ pub mod traits {
 
         use crate::Error;
 
-        use super::Unit;
+        use super::{Method, Unit};
 
         #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "lowercase")]
@@ -92,6 +94,32 @@ pub mod traits {
         pub enum TestMethod {
             Bolt11,
         }
+
+        impl Display for TestMethod {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "{}",
+                    match self {
+                        TestMethod::Bolt11 => "bolt11",
+                    }
+                )
+            }
+        }
+
+        impl FromStr for TestMethod {
+            type Err = &'static str;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                if s == "bolt11" {
+                    Ok(Self::Bolt11)
+                } else {
+                    Err("bad method value")
+                }
+            }
+        }
+
+        impl Method for TestMethod {}
     }
 }
 

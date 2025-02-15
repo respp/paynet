@@ -1,12 +1,14 @@
 use rusqlite::{Connection, Result};
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct PaymentEvent {
-    payee: String,
-    asset: String,
-    invoice_id: String,
-    payer: String,
-    amount: String,
+    pub payee: String,
+    pub asset: String,
+    pub invoice_id: String,
+    pub payer: String,
+    pub amount_low: String,
+    pub amount_high: String,
 }
 
 #[derive(Debug)]
@@ -24,19 +26,57 @@ impl From<&apibara_core::starknet::v1alpha2::BlockHeader> for Block {
     }
 }
 
-impl From<&apibara_core::starknet::v1alpha2::Event> for PaymentEvent {
-    fn from(value: &apibara_core::starknet::v1alpha2::Event) -> Self {
-        Self {
-            payee: value.keys[1].to_string(),
-            asset: value.keys[2].to_string(),
-            invoice_id: value.data[0].to_string(),
-            payer: value.data[1].to_string(),
-            amount: value.data[2].to_string(),
-        }
+#[derive(Debug, Error)]
+pub enum TryPaymentEventFromApibaraEvent {
+    #[error("event has no key at index {0}")]
+    Key(u8),
+    #[error("event has no data at index {0}")]
+    Data(u8),
+}
+
+impl TryFrom<&apibara_core::starknet::v1alpha2::Event> for PaymentEvent {
+    type Error = TryPaymentEventFromApibaraEvent;
+
+    fn try_from(value: &apibara_core::starknet::v1alpha2::Event) -> Result<Self, Self::Error> {
+        Ok(Self {
+            payee: value
+                .keys
+                .get(1)
+                .ok_or(TryPaymentEventFromApibaraEvent::Key(1))?
+                .to_string(),
+            asset: value
+                .keys
+                .get(2)
+                .ok_or(TryPaymentEventFromApibaraEvent::Key(2))?
+                .to_string(),
+            #[allow(clippy::get_first)]
+            invoice_id: value
+                .data
+                .get(0)
+                .ok_or(TryPaymentEventFromApibaraEvent::Data(0))?
+                .to_string(),
+            payer: value
+                .data
+                .get(1)
+                .ok_or(TryPaymentEventFromApibaraEvent::Data(1))?
+                .to_string(),
+            amount_low: value
+                .data
+                .get(2)
+                .ok_or(TryPaymentEventFromApibaraEvent::Data(2))?
+                .to_string(),
+            amount_high: value
+                .data
+                .get(3)
+                .ok_or(TryPaymentEventFromApibaraEvent::Data(3))?
+                .to_string(),
+        })
     }
 }
 
-pub fn create_tables(conn: &Connection) -> Result<()> {
+pub fn create_tables(conn: &mut Connection) -> Result<()> {
+    let tx = conn.transaction()?;
+
     const CREATE_TABLE_BLOCK: &str = r#"
         CREATE TABLE IF NOT EXISTS block (
             id TEXT PRIMARY KEY,
@@ -51,11 +91,14 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             asset TEXT NOT NULL,
             invoice_id TEXT NOT NULL,
             payer TEXT NOT NULL,
-            amount TEXT NOT NULL
+            amount_low TEXT NOT NULL
+            amount_high TEXT NOT NULL
         )"#;
 
-    conn.execute(CREATE_TABLE_BLOCK, ())?;
-    conn.execute(CREATE_TABLE_PAYMENT_EVENT, ())?;
+    tx.execute(CREATE_TABLE_BLOCK, ())?;
+    tx.execute(CREATE_TABLE_PAYMENT_EVENT, ())?;
+
+    tx.commit()?;
 
     Ok(())
 }
@@ -71,11 +114,11 @@ pub fn insert_new_block(conn: &Connection, block: &Block) -> Result<()> {
 pub fn insert_payment_event(
     conn: &Connection,
     block_id: &str,
-    payment_event: PaymentEvent,
+    payment_event: &PaymentEvent,
 ) -> Result<()> {
     const INSERT_PAYMENT_EVENT: &str = r#"
         INSERT INTO payment_event
-            (block_id, payee, asset, invoice_id, payer, amount)
+            (block_id, payee, asset, invoice_id, payer, amount_low, amount_high)
         VALUES
             ($1, $2, $3, $4, $5, $6)"#;
 
@@ -83,11 +126,12 @@ pub fn insert_payment_event(
         INSERT_PAYMENT_EVENT,
         (
             &block_id,
-            payment_event.payee,
-            payment_event.asset,
-            payment_event.invoice_id,
-            payment_event.payer,
-            payment_event.amount,
+            &payment_event.payee,
+            &payment_event.asset,
+            &payment_event.invoice_id,
+            &payment_event.payer,
+            &payment_event.amount_low,
+            &payment_event.amount_high,
         ),
     )?;
 

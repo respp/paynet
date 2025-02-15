@@ -25,7 +25,7 @@ pub async fn mint_quote(
 ) -> Result<Json<MintQuoteResponse<Uuid>>, Error> {
     // Release the lock asap
     let settings = {
-        let read_nuts_settings_lock = nuts.read();
+        let read_nuts_settings_lock = nuts.read().await;
 
         if read_nuts_settings_lock.nut04.disabled {
             Err(QuoteError::MintDisabled)?;

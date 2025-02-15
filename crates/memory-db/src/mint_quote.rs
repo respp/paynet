@@ -39,7 +39,7 @@ pub async fn build_response_from_db(
     quote_id: Uuid,
 ) -> Result<MintQuoteResponse<Uuid>, Error> {
     let record = sqlx::query!(
-        r#"SELECT request, state, expiry  FROM mint_quote where id = $1"#,
+        r#"SELECT request, state, expiry FROM mint_quote where id = $1"#,
         quote_id
     )
     .fetch_one(conn)

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package cashu_core;
+
+message BlindedMessage {
+  uint64 amount = 1;
+  bytes keyset_id = 2;
+  bytes blinded_secret = 3;
+}
+
+message BlindSignature {
+  uint64 amount = 1;
+  bytes keyset_id = 2;
+  bytes blind_signature  = 3;
+}
+
+message Proof {
+  uint64 amount = 1;
+  bytes keyset_id = 2;
+  string secret = 3;
+  bytes unblind_signature = 4;
+}
+

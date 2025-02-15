@@ -1,16 +1,22 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use cashu_starknet::{Asset, StarknetU256};
-use nuts::{dhke, nut00::CashuError, nut04::MintQuoteState, nut05::MeltQuoteState, Amount};
+use cashu_starknet::{Asset, Unit};
+use nuts::{
+    dhke, nut00::CashuError, nut01, nut02, nut04::MintQuoteState, nut05::MeltQuoteState, Amount,
+};
 use thiserror::Error;
 
-use crate::{methods::Method, Unit};
+use crate::{commands::ConfigError, methods::Method};
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
+    Init(#[from] InitializationError),
+    #[error(transparent)]
     SerdeJson(#[from] serde_json::Error),
     #[error(transparent)]
     Dhke(#[from] dhke::Error),
+    #[error(transparent)]
+    Nut02(#[from] nut02::Error),
     #[error(transparent)]
     Database(#[from] memory_db::Error),
     #[error(transparent)]
@@ -24,7 +30,17 @@ pub enum Error {
     #[error(transparent)]
     Melt(#[from] MeltError),
     #[error(transparent)]
-    Starknet(#[from] StarknetError),
+    Proof(#[from] ProofError),
+    #[error(transparent)]
+    BlindMessage(#[from] BlindMessageError),
+    #[error(transparent)]
+    Starknet(#[from] cashu_starknet::Error),
+    #[error(transparent)]
+    Tonic(#[from] tonic::Status),
+    #[error(transparent)]
+    Signer(#[from] SignerError),
+    #[error(transparent)]
+    Service(#[from] ServiceError),
     #[error("Keyset doesn't exist in this mint")]
     UnknownKeySet,
     #[error("No keypair for amount")]
@@ -53,10 +69,21 @@ impl IntoResponse for Error {
 }
 
 #[derive(Debug, Error)]
+pub enum ProofError {
+    #[error("Invalid Proof")]
+    Invalid,
+    #[error("Proof already used")]
+    Used,
+}
+
+#[derive(Debug, Error)]
+pub enum BlindMessageError {
+    #[error("Blind message is already signed")]
+    AlreadySigned,
+}
+
+#[derive(Debug, Error)]
 pub enum SwapError {
-    /// BlindMessage is already signed
-    #[error("Blind Message is already signed")]
-    BlindMessageAlreadySigned,
     #[error("All input units should be present as output")]
     UnbalancedUnits,
     /// Transaction unbalanced
@@ -109,9 +136,44 @@ pub enum MeltError {
 }
 
 #[derive(Debug, Error)]
-pub enum StarknetError {
-    #[error(
-        "Starknet u256 amount of {1} is to big to be converted into a cashu Amount for unit {0}"
-    )]
-    StarknetAmountTooHigh(Unit, StarknetU256),
+pub enum InitializationError {
+    #[error("Failed to read the config file: {0}")]
+    CannotReadConfig(#[source] std::io::Error),
+    #[error("Failed to deserialize the config file as toml: {0}")]
+    Toml(#[source] toml::de::Error),
+    #[error("Failed to connect to database: {0}")]
+    DbConnect(#[source] sqlx::Error),
+    #[error("Failed to run the database migration: {0}")]
+    DbMigrate(#[source] sqlx::migrate::MigrateError),
+    #[cfg(debug_assertions)]
+    #[error("Failed to load .env file: {0}")]
+    Dotenvy(#[source] dotenvy::Error),
+    #[error("Failed to read variable from environment: {0}")]
+    Env(#[source] std::env::VarError),
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+    #[error("Failed init apibara indexer: {0}")]
+    InitIndexer(#[source] invoice_payment_indexer::Error),
+    #[error("Failed bind tcp listener: {0}")]
+    BindTcp(#[source] std::io::Error),
+    #[error("Failed to open the SqLite db: {0}")]
+    OpenSqlite(#[source] rusqlite::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum ServiceError {
+    #[error("Failed to await on indexer future: {0}")]
+    JoinIndexer(#[source] tokio::task::JoinError),
+    #[error("Failed to run the indexer: {0}")]
+    Indexer(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    #[error("Failed to serve the axum server: {0}")]
+    AxumServe(#[source] std::io::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum SignerError {
+    #[error("invalid bytes C: {0}")]
+    BlindSignature(#[from] nut01::Error),
+    #[error("failed to connect")]
+    Connection(#[from] tonic::transport::Error),
 }

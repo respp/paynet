@@ -5,9 +5,10 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use crate::nut05;
 #[cfg(feature = "nut19")]
 use crate::nut19;
+use crate::traits::Method;
+use crate::{nut05, traits};
 
 use super::nut01::PublicKey;
 use super::nut04;
@@ -57,7 +58,7 @@ impl<'de> Deserialize<'de> for MintVersion {
 
 /// Mint Info [NIP-06]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MintInfo<M, U> {
+pub struct MintInfo<M: traits::Method, U> {
     /// name of the mint and should be recognizable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -92,7 +93,7 @@ pub struct MintInfo<M, U> {
     pub time: Option<u64>,
 }
 
-impl<M, U> MintInfo<M, U> {
+impl<M: traits::Method, U> MintInfo<M, U> {
     /// Set name
     pub fn name<S>(self, name: S) -> Self
     where
@@ -191,7 +192,7 @@ impl<M, U> MintInfo<M, U> {
 
 /// Supported nuts and settings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NutsSettings<M, U> {
+pub struct NutsSettings<M: Method, U> {
     /// NUT04 Settings
     #[serde(rename = "4")]
     pub nut04: nut04::Settings<M, U>,
@@ -200,18 +201,18 @@ pub struct NutsSettings<M, U> {
     pub nut05: nut05::Settings<M, U>,
     #[cfg(feature = "nut19")]
     #[serde(rename = "19")]
-    pub nut19: nut19::Settings,
+    pub nut19: nut19::Settings<M>,
 }
 
 #[derive(Debug, Clone)]
-pub struct NutsSettingsBuilder<M, U> {
+pub struct NutsSettingsBuilder<M: Method, U> {
     nut04: Option<nut04::Settings<M, U>>,
     nut05: Option<nut05::Settings<M, U>>,
     #[cfg(feature = "nut19")]
-    nut19: Option<nut19::Settings>,
+    nut19: Option<nut19::Settings<M>>,
 }
 
-impl<M, U> Default for NutsSettingsBuilder<M, U> {
+impl<M: Method, U> Default for NutsSettingsBuilder<M, U> {
     fn default() -> Self {
         Self {
             nut04: None,
@@ -222,7 +223,7 @@ impl<M, U> Default for NutsSettingsBuilder<M, U> {
     }
 }
 
-impl<M, U> NutsSettingsBuilder<M, U> {
+impl<M: traits::Method, U> NutsSettingsBuilder<M, U> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -311,7 +312,16 @@ mod tests {
         "8": {"supported": true},
         "9": {"supported": true},
         "10": {"supported": true},
-        "11": {"supported": true}
+        "11": {"supported": true},
+        "19": {
+            "ttl": 60,
+            "cached_endpoints": [
+               {
+                    "method": "POST",
+                    "path": "/v1/mint/bolt11"
+                } 
+            ]
+        }
     }
 }"#;
 
@@ -382,7 +392,16 @@ mod tests {
     "8": {"supported": true},
     "9": {"supported": true},
     "10": {"supported": true},
-    "12": {"supported": true}
+    "12": {"supported": true},
+    "19": {
+        "ttl": 60,
+        "cached_endpoints": [
+           {
+                "method": "POST",
+                "path": "/v1/mint/bolt11"
+            } 
+        ]
+    }
   }
 }"#;
         let info: MintInfo<TestMethod, TestUnit> = serde_json::from_str(mint_info_str).unwrap();
@@ -426,7 +445,16 @@ mod tests {
     "8": {"supported": true},
     "9": {"supported": true},
     "10": {"supported": true},
-    "12": {"supported": true}
+    "12": {"supported": true},
+    "19": {
+        "ttl": 60,
+        "cached_endpoints": [
+           {
+                "method": "POST",
+                "path": "/v1/mint/bolt11"
+            } 
+        ]
+    }
   }
 }"#;
         let mint_info: MintInfo<TestMethod, TestUnit> =

@@ -28,7 +28,7 @@ pub async fn melt_quote(
 ) -> Result<Json<MeltQuoteResponse<Uuid>>, Error> {
     // Release the lock asap
     let settings = {
-        let read_nuts_settings_lock = nuts.read();
+        let read_nuts_settings_lock = nuts.read().await;
 
         if read_nuts_settings_lock.nut05.disabled {
             Err(QuoteError::MeltDisabled)?;

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package cashu_signer;
+
+import "core.proto";
+
+service Signer {
+  rpc DeclareKeyset (DeclareKeysetRequest) returns (DeclareKeysetResponse);
+  rpc SignBlindedMessages (SignBlindedMessagesRequest) returns (SignBlindedMessagesResponse);
+  rpc VerifyProofs (VerifyProofsRequest) returns (VerifyProofsResponse);
+}
+
+message DeclareKeysetRequest {
+  string method = 1;
+  string unit = 2;
+  uint32 index = 3;
+  uint32 max_order = 4;
+
+}
+
+message DeclareKeysetResponse {
+  bytes keyset_id = 1;
+}
+
+message SignBlindedMessagesRequest {
+  repeated cashu_core.BlindedMessage messages = 1;
+}
+
+message SignBlindedMessagesResponse {
+  repeated bytes signatures = 1;
+}
+
+message VerifyProofsRequest {
+  repeated cashu_core.Proof proofs = 1;
+}
+
+message VerifyProofsResponse {
+  bool is_valid = 1; 
+}
+

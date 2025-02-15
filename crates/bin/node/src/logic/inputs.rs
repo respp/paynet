@@ -1,27 +1,31 @@
+use cashu_starknet::Unit;
+use futures::TryFutureExt;
 use num_traits::CheckedAdd;
 use std::collections::HashSet;
 
-use keys_manager::KeysManager;
+use cashu_signer::VerifyProofsRequest;
 use memory_db::InsertSpentProofsQueryBuilder;
-use nuts::{dhke::verify_message, nut00::Proof, Amount};
+use nuts::{nut00::Proof, nut01::PublicKey, Amount};
 use sqlx::PgConnection;
 
 use crate::{
-    errors::{Error, MeltError, SwapError},
+    app_state::SharedSignerClient,
+    errors::{Error, MeltError, ProofError, SwapError},
     keyset_cache::KeysetCache,
-    Unit,
 };
 
 pub async fn process_melt_inputs<'a>(
     conn: &mut PgConnection,
+    signer: SharedSignerClient,
     keyset_cache: &mut KeysetCache,
-    keys_manager: &KeysManager,
     inputs: &'a [Proof],
     expected_unit: Unit,
 ) -> Result<(Amount, InsertSpentProofsQueryBuilder<'a>), Error> {
     let mut secrets = HashSet::new();
     let mut query_builder = InsertSpentProofsQueryBuilder::new();
     let mut total_amount = Amount::ZERO;
+
+    let mut verify_proofs_request = Vec::with_capacity(inputs.len());
 
     for proof in inputs {
         // Uniqueness
@@ -30,12 +34,6 @@ pub async fn process_melt_inputs<'a>(
         }
 
         let keyset_info = keyset_cache.get_keyset_info(conn, proof.keyset_id).await?;
-
-        // Make sure the proof belong to an existing keyset and is valid
-        let keypair = keyset_cache
-            .get_key(conn, keys_manager, proof.keyset_id, &proof.amount)
-            .await?;
-        verify_message(&keypair.secret_key, proof.c, proof.secret.as_bytes())?;
 
         // Compute and increment fee
         let unit = keyset_info.unit();
@@ -49,26 +47,33 @@ pub async fn process_melt_inputs<'a>(
 
         // Append to insert query
         query_builder.add_row(proof)?;
+
+        // Prepare payload for verification
+        verify_proofs_request.push(cashu_signer::Proof {
+            amount: proof.amount.into(),
+            keyset_id: proof.keyset_id.to_bytes().to_vec(),
+            secret: proof.secret.to_string(),
+            unblind_signature: proof.c.to_bytes().to_vec(),
+        });
     }
 
-    // Make sure those inputs were not already used
-    if memory_db::is_any_proof_already_used(conn, secrets.into_iter()).await? {
-        Err(SwapError::BlindMessageAlreadySigned)?;
-    }
+    run_verification_queries(conn, secrets, signer, verify_proofs_request).await?;
 
     Ok((total_amount, query_builder))
 }
 
 pub async fn process_swap_inputs<'a>(
     conn: &mut PgConnection,
+    signer: SharedSignerClient,
     keyset_cache: &mut KeysetCache,
-    keys_manager: &KeysManager,
     inputs: &'a [Proof],
 ) -> Result<(Vec<(Unit, u16, Amount)>, InsertSpentProofsQueryBuilder<'a>), Error> {
     // Input process
     let mut secrets = HashSet::new();
     let mut fees_and_amounts: Vec<(Unit, u16, Amount)> = Vec::new();
     let mut query_builder = InsertSpentProofsQueryBuilder::new();
+
+    let mut verify_proofs_request = Vec::with_capacity(inputs.len());
 
     for proof in inputs {
         // Uniqueness
@@ -77,12 +82,6 @@ pub async fn process_swap_inputs<'a>(
         }
 
         let keyset_info = keyset_cache.get_keyset_info(conn, proof.keyset_id).await?;
-
-        // Make sure the proof belong to an existing keyset and is valid
-        let keypair = keyset_cache
-            .get_key(conn, keys_manager, proof.keyset_id, &proof.amount)
-            .await?;
-        verify_message(&keypair.secret_key, proof.c, proof.secret.as_bytes())?;
 
         // Compute and increment fee
         let fee_for_this_proof = (keyset_info.input_fee_ppk() + 999) / 1000;
@@ -100,12 +99,49 @@ pub async fn process_swap_inputs<'a>(
 
         // Append to insert query
         query_builder.add_row(proof)?;
+
+        // Prepare payload for verification
+        verify_proofs_request.push(cashu_signer::Proof {
+            keyset_id: proof.keyset_id.to_bytes().to_vec(),
+            amount: proof.amount.into(),
+            secret: proof.secret.to_string(),
+            unblind_signature: proof.c.to_bytes().to_vec(),
+        });
     }
 
-    // Make sure those inputs were not already used
-    if memory_db::is_any_proof_already_used(conn, secrets.into_iter()).await? {
-        Err(SwapError::BlindMessageAlreadySigned)?;
-    }
+    run_verification_queries(conn, secrets, signer, verify_proofs_request).await?;
 
     Ok((fees_and_amounts, query_builder))
+}
+
+async fn run_verification_queries(
+    conn: &mut PgConnection,
+    secrets: HashSet<PublicKey>,
+    signer: SharedSignerClient,
+    verify_proofs_request: Vec<cashu_signer::Proof>,
+) -> Result<(), Error> {
+    let query_signer_future = async {
+        let mut lock = signer.write().await;
+        lock.verify_proofs(VerifyProofsRequest {
+            proofs: verify_proofs_request,
+        })
+        .await
+    };
+
+    // Parrallelize the two calls
+    let res = tokio::try_join!(
+        // Make sure those proof are valid
+        query_signer_future
+            .map_err(Error::from)
+            .map_ok(|r| r.get_ref().is_valid),
+        // Make sure those inputs were not already used
+        memory_db::is_any_proof_already_used(conn, secrets.into_iter()).map_err(Error::from),
+    );
+
+    match res {
+        Ok((false, _)) => Err(ProofError::Invalid.into()),
+        Ok((_, true)) => Err(ProofError::Used.into()),
+        Err(e) => Err(e),
+        Ok((true, false)) => Ok(()),
+    }
 }

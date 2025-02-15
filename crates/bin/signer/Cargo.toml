@@ -1,0 +1,24 @@
+[package]
+name = "cashu-signer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcoin = { workspace = true }
+nuts = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tonic = { workspace = true }
+thiserror = { workspace = true }
+tokio-stream = { workspace = true }
+url = { workspace = true }
+prost = "0.13"
+
+cashu-starknet = { workspace = true }
+
+[features]
+client = []
+server = []
+
+[build-dependencies]
+tonic-build = "*"
+

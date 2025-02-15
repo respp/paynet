@@ -30,10 +30,10 @@ pub enum Error {
     /// Secp256k1 error
     #[error(transparent)]
     Secp256k1(#[from] bitcoin::secp256k1::Error),
-    // TODO: Remove use anyhow
-    /// Custom Error
-    #[error("`{0}`")]
-    Custom(String),
+    #[error("Could not get proof")]
+    CoudNotGetProof,
+    #[error("Lengths of promises, rs, and secrets must be equal")]
+    DifferentLength,
 }
 
 /// Deterministically maps a message to a public key point on the secp256k1
@@ -122,21 +122,19 @@ pub fn construct_proofs(
 ) -> Result<Proofs, Error> {
     if (promises.len() != rs.len()) || (promises.len() != secrets.len()) {
         tracing::error!(
-            "Promises: {}, RS: {}, secrets:{}",
+            "Different length: Promises: {}, RS: {}, secrets:{}",
             promises.len(),
             rs.len(),
             secrets.len()
         );
-        return Err(Error::Custom(
-            "Lengths of promises, rs, and secrets must be equal".to_string(),
-        ));
+        return Err(Error::DifferentLength);
     }
     let mut proofs = vec![];
     for ((blind_signature, r), secret) in promises.into_iter().zip(rs).zip(secrets) {
         let blind_c: PublicKey = blind_signature.c;
         let a: PublicKey = keys
             .amount_key(blind_signature.amount)
-            .ok_or(Error::Custom("Could not get proofs".to_string()))?;
+            .ok_or(Error::CoudNotGetProof)?;
 
         let unblind_signature: PublicKey = unblind_message(&blind_c, &r, &a)?;
 
@@ -165,7 +163,11 @@ pub fn sign_message(k: &SecretKey, blind_message: &PublicKey) -> Result<PublicKe
 }
 
 /// Verify Message
-pub fn verify_message(a: &SecretKey, unblind_message: PublicKey, msg: &[u8]) -> Result<(), Error> {
+pub fn verify_message(
+    a: &SecretKey,
+    unblind_message: PublicKey,
+    msg: &[u8],
+) -> Result<bool, Error> {
     // Y
     let y: PublicKey = hash_to_curve(msg)?;
 
@@ -175,11 +177,7 @@ pub fn verify_message(a: &SecretKey, unblind_message: PublicKey, msg: &[u8]) -> 
         .into();
 
     // Compare the unblind_message with the expected value
-    if unblind_message == expected_unblind_message {
-        return Ok(());
-    }
-
-    Err(Error::TokenNotVerified)
+    Ok(unblind_message == expected_unblind_message)
 }
 
 #[cfg(test)]

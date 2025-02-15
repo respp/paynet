@@ -2,23 +2,23 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use keys_manager::KeysManager;
 use nuts::nut04::{MintQuoteState, MintRequest, MintResponse};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
+    app_state::SharedSignerClient,
     errors::{Error, MintError},
     keyset_cache::KeysetCache,
-    logic::{process_outputs, process_outputs_allow_single_unit},
+    logic::{check_outputs_allow_single_unit, process_outputs},
     methods::Method,
 };
 
 pub async fn mint(
     Path(method): Path<Method>,
     State(pool): State<PgPool>,
+    State(signer_client): State<SharedSignerClient>,
     State(mut keyset_cache): State<KeysetCache>,
-    State(keys_manager): State<KeysManager>,
     Json(mint_request): Json<MintRequest<Uuid>>,
 ) -> Result<Json<MintResponse>, Error> {
     match method {
@@ -35,20 +35,14 @@ pub async fn mint(
     }
 
     let total_amount =
-        process_outputs_allow_single_unit(&mut tx, &mut keyset_cache, &mint_request.outputs)
-            .await?;
+        check_outputs_allow_single_unit(&mut tx, &mut keyset_cache, &mint_request.outputs).await?;
 
     if total_amount != expected_amount {
         return Err(MintError::UnbalancedMintAndQuoteAmounts(total_amount, expected_amount).into());
     }
 
-    let (blind_signatures, insert_blind_signatures_query_builder) = process_outputs(
-        &mut tx,
-        &mut keyset_cache,
-        &keys_manager,
-        &mint_request.outputs,
-    )
-    .await?;
+    let (blind_signatures, insert_blind_signatures_query_builder) =
+        process_outputs(signer_client, &mint_request.outputs).await?;
 
     insert_blind_signatures_query_builder
         .execute(&mut tx)

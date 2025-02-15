@@ -9,7 +9,7 @@ pub struct InsertBlindSignaturesQueryBuilder<'args> {
     first: bool,
 }
 
-impl<'args> InsertBlindSignaturesQueryBuilder<'args> {
+impl InsertBlindSignaturesQueryBuilder<'_> {
     pub fn new() -> Self {
         Self {
             builder: QueryBuilder::new(

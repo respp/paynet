@@ -2,80 +2,58 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use cashu_starknet::{Asset, StarknetU256};
-use dotenv::dotenv;
-use errors::StarknetError;
-use invoice_payment_indexer::{index_stream, init_apibara_stream};
+use cashu_starknet::Unit;
+use clap::Parser;
+use commands::read_env_variables;
+use errors::{Error, InitializationError, ServiceError, SignerError};
 use methods::Method;
 use nuts::{
     nut04::MintMethodSettings, nut05::MeltMethodSettings, nut06::NutsSettings, Amount,
     QuoteTTLConfig,
 };
-use primitive_types::U256;
-use serde::{Deserialize, Serialize};
-use sqlx::{migrate::Migrator, PgPool};
-use starknet_types_core::felt::Felt;
-use std::{net::Ipv6Addr, path::Path, str::FromStr};
+use sqlx::PgPool;
+use std::net::Ipv6Addr;
+use tokio::try_join;
 
 mod app_state;
+mod commands;
 mod errors;
+mod indexer;
 mod keyset_cache;
-mod methods;
 mod routes;
 mod utils;
 use app_state::AppState;
 mod logic;
+mod methods;
 
 const CASHU_REST_PORT: u16 = 3338;
 
-async fn init() -> PgPool {
-    dotenv::dotenv().expect("faild to load .env file");
-    let database_url =
-        std::env::var("DATABASE_URL").expect("env should contain a `DATABASE_URL` var");
-    let migration_folder = std::env::var("DATABASE_MIGRATIONS")
-        .expect("env should contain a `DATABASE_MIGRATIONS` var");
-
-    let pool = PgPool::connect(&database_url)
+async fn connect_to_db_and_run_migrations(pg_url: &str) -> Result<PgPool, InitializationError> {
+    let pool = PgPool::connect(pg_url)
         .await
-        .expect("should be able to connect to db");
+        .map_err(InitializationError::DbConnect)?;
 
-    Migrator::new(Path::new(&migration_folder))
+    memory_db::run_migrations(&pool)
         .await
-        .expect("should be a migration folder")
-        .run(&pool)
-        .await
-        .expect("should be able to run migrations");
+        .map_err(InitializationError::DbMigrate)?;
 
-    pool
+    Ok(pool)
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error> {
     // initialize tracing
     tracing_subscriber::fmt::init();
-    dotenv().ok();
 
-    let pg_pool = init().await;
+    let args = commands::Args::parse();
+    let config = args.read_config()?;
+    // Do this early to fail early
+    let strk_token_address = config
+        .strk_token_contract_address()
+        .map_err(InitializationError::Config)?;
+    let env_variables = read_env_variables()?;
+    let pg_pool = connect_to_db_and_run_migrations(&env_variables.pg_url).await?;
 
-    {
-        let dna_token = dotenv::var("APIBARA_TOKEN").expect("missing `APIBARA_TOKEN` env variable");
-        let starknet_token_address = Felt::from_hex_unchecked(
-            "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
-        );
-        let our_recipient_account = Felt::from_hex_unchecked(
-            "0x07487f6e8fc8c60049e82cf8b6593211aeefef7efd0021db585c7e78cc29ac9a",
-        );
-
-        let stream = init_apibara_stream(
-            dna_token,
-            vec![(our_recipient_account, starknet_token_address)],
-        )
-        .await
-        .unwrap();
-
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let _handle = tokio::spawn(index_stream(conn, stream));
-    }
     let nuts_settings = NutsSettings {
         nut04: nuts::nut04::Settings {
             methods: vec![MintMethodSettings {
@@ -101,16 +79,16 @@ async fn main() {
             ttl: Some(3600),
             cached_endpoints: vec![
                 nuts::nut19::CachedEndpoint {
-                    method: nuts::nut19::Method::Post,
-                    path: nuts::nut19::Path::MintStarknet,
+                    method: nuts::nut19::HttpMethod::Post,
+                    path: nuts::nut19::Path::Mint(Method::Starknet),
                 },
                 nuts::nut19::CachedEndpoint {
-                    method: nuts::nut19::Method::Post,
+                    method: nuts::nut19::HttpMethod::Post,
                     path: nuts::nut19::Path::Swap,
                 },
                 nuts::nut19::CachedEndpoint {
-                    method: nuts::nut19::Method::Post,
-                    path: nuts::nut19::Path::MeltStarknet,
+                    method: nuts::nut19::HttpMethod::Post,
+                    path: nuts::nut19::Path::Melt(Method::Starknet),
                 },
             ],
         },
@@ -128,6 +106,11 @@ async fn main() {
 
         router
     };
+
+    let signer_client = cashu_signer::SignerClient::connect(config.signer_url)
+        .await
+        .map_err(SignerError::from)?;
+
     let app = Router::new()
         .merge(cached_routes)
         .route("/v1/mint/quote/{method}", post(routes::mint_quote))
@@ -142,7 +125,7 @@ async fn main() {
         )
         .with_state(AppState::new(
             pg_pool,
-            &[1, 2, 3, 4, 5],
+            signer_client,
             nuts_settings,
             QuoteTTLConfig {
                 mint_ttl: 3600,
@@ -154,94 +137,27 @@ async fn main() {
         std::net::SocketAddr::new(Ipv6Addr::LOCALHOST.into(), CASHU_REST_PORT);
     let listener = tokio::net::TcpListener::bind(rest_socket_address)
         .await
-        .unwrap();
+        .map_err(InitializationError::BindTcp)?;
 
-    axum::serve(listener, app).await.unwrap();
-}
+    let axum_future = async {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                println!("Rpc server shut down gracefully");
+            })
+            .await
+            .map_err(ServiceError::AxumServe)
+    };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum Unit {
-    Strk,
-}
+    let indexer_service = indexer::spawn_indexer_task(
+        env_variables.apibara_token,
+        strk_token_address,
+        config.recipient_address,
+    )
+    .await?;
+    let indexer_future = indexer::listen_to_indexer(indexer_service);
 
-impl Unit {
-    pub fn asset(&self) -> Asset {
-        match self {
-            Unit::Strk => Asset::Strk,
-        }
-    }
-}
+    // Run them forever
+    let ((), ()) = try_join!(axum_future, indexer_future)?;
 
-// Used for derivation path
-impl From<Unit> for u32 {
-    fn from(value: Unit) -> Self {
-        match value {
-            Unit::Strk => 0,
-        }
-    }
-}
-
-impl FromStr for Unit {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let unit = match s {
-            "strk" => Self::Strk,
-            _ => return Err("invalid value for enum `Unit`"),
-        };
-
-        Ok(unit)
-    }
-}
-
-impl std::fmt::Display for Unit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(
-            match self {
-                Unit::Strk => "strk",
-            },
-            f,
-        )
-    }
-}
-
-impl nuts::traits::Unit for Unit {}
-
-// e-3 strk
-const STRK_UNIT_TO_ASSET_CONVERSION_RATE: u64 = 1_000_000_000_000_000;
-
-impl Unit {
-    pub fn convert_amount_into_u256(&self, amount: Amount) -> StarknetU256 {
-        match self {
-            Unit::Strk => StarknetU256::from(
-                U256::from(u64::from(amount)) * U256::from(STRK_UNIT_TO_ASSET_CONVERSION_RATE),
-            ),
-        }
-    }
-
-    pub fn convert_u256_into_amount(
-        &self,
-        amount: StarknetU256,
-    ) -> Result<(Amount, StarknetU256), StarknetError> {
-        match self {
-            Unit::Strk => {
-                let (quotient, rem) = primitive_types::U256::from(&amount)
-                    .div_mod(U256::from(STRK_UNIT_TO_ASSET_CONVERSION_RATE));
-                Ok((
-                    Amount::from(
-                        u64::try_from(quotient)
-                            .map_err(|_| StarknetError::StarknetAmountTooHigh(*self, amount))?,
-                    ),
-                    StarknetU256::from(rem),
-                ))
-            }
-        }
-    }
-
-    pub fn is_asset_supported(&self, asset: Asset) -> bool {
-        match (self, asset) {
-            (Unit::Strk, Asset::Strk) => true,
-        }
-    }
+    Ok(())
 }

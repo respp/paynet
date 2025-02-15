@@ -3,15 +3,17 @@ resolver = "2"
 members = [
   "crates/bin/node",
   "crates/bin/indexer",
+  "crates/bin/signer",
   "crates/invoice-payment-indexer",
-  "crates/keys-manager",
   "crates/memory-db",
   "crates/nuts",
   "crates/starknet",
+  "crates/grpc",
 ]
 
 [workspace.dependencies]
 axum = "0.8.1"
+tonic = "0.12.3"
 axum-response-cache = "0.2.0"
 http = "1.2.0"
 tower = "0.5.2"
@@ -32,7 +34,7 @@ hex = "0.4.3"
 starknet-types-core = "0.1.7"
 uuid = "1.11.0"
 lazy_static = "1.5.0"
-dotenv = "0.15.0"
+dotenvy = "0.15.7"
 sqlx = "0.8.2"
 parking_lot = "0.12.3"
 rand = "0.8.5"
@@ -43,16 +45,21 @@ apibara-core = { git = "https://github.com/apibara/dna.git", rev = "f1b782e0e86b
 apibara-sdk = { git = "https://github.com/apibara/dna.git", rev = "f1b782e0e86b"}
 rusqlite = "0.32.0"
 primitive-types = "0.13.1"
-pin-project = "1.1.9"
-async-rwlock = "1.3.0"
+rayon = "1.10.0"
+reqwest = "0.12.12"
+toml = "0.8.20"
+clap = "4.5.29"
+tokio-stream = "0.1.17"
 
 
 # Local crates
 nuts = { path = "crates/nuts" }
 cashu-starknet = { path = "crates/starknet" }
 memory-db  = { path = "crates/memory-db" }
-keys-manager  = { path = "crates/keys-manager" }
 invoice-payment-indexer = { path = "crates/invoice-payment-indexer" }
+cashu-signer = { path = "crates/bin/signer" }
+cashu-starknet-grpc = { path = "crates/grpc" }
+
 
 
 

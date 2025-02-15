@@ -2,7 +2,6 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use keys_manager::KeysManager;
 use num_traits::CheckedAdd;
 use nuts::{
     nut05::{MeltQuoteResponse, MeltQuoteState, MeltRequest},
@@ -12,6 +11,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{
+    app_state::SharedSignerClient,
     errors::{Error, MeltError},
     keyset_cache::KeysetCache,
     logic::process_melt_inputs,
@@ -21,21 +21,15 @@ use crate::{
 
 async fn handle_unpaid_quote(
     tx: &mut Transaction<'_, Postgres>,
+    signer: SharedSignerClient,
     keyset_cache: &mut KeysetCache,
-    keys_manager: &KeysManager,
     melt_request: &MeltRequest<Uuid>,
     quote_unit: Unit,
     expected_amount: Amount,
     fee_reserve: Amount,
 ) -> Result<(), Error> {
-    let (total_amount, insert_spent_proofs_query_builder) = process_melt_inputs(
-        tx,
-        keyset_cache,
-        keys_manager,
-        &melt_request.inputs,
-        quote_unit,
-    )
-    .await?;
+    let (total_amount, insert_spent_proofs_query_builder) =
+        process_melt_inputs(tx, signer, keyset_cache, &melt_request.inputs, quote_unit).await?;
 
     let total_expected_amount = expected_amount
         .checked_add(&fee_reserve)
@@ -56,8 +50,8 @@ async fn handle_unpaid_quote(
 pub async fn melt(
     Path(method): Path<Method>,
     State(pool): State<PgPool>,
+    State(signer_client): State<SharedSignerClient>,
     State(mut keyset_cache): State<KeysetCache>,
-    State(keys_manager): State<KeysManager>,
     Json(melt_request): Json<MeltRequest<Uuid>>,
 ) -> Result<Json<MeltQuoteResponse<Uuid>>, Error> {
     match method {
@@ -74,8 +68,8 @@ pub async fn melt(
         MeltQuoteState::Unpaid => {
             handle_unpaid_quote(
                 &mut tx,
+                signer_client,
                 &mut keyset_cache,
-                &keys_manager,
                 &melt_request,
                 quote_unit,
                 expected_amount,

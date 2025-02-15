@@ -6,9 +6,10 @@ edition = "2021"
 [dependencies]
 starknet-core = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
+cashu-starknet = { workspace = true }
 
 apibara-core = { workspace = true }
 apibara-sdk = { workspace = true }

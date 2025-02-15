@@ -7,8 +7,9 @@ edition = "2021"
 nuts = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 thiserror = { workspace = true }
-sqlx = { workspace = true, features = ["postgres", "macros", "runtime-tokio", "time", "bigdecimal"] }
+sqlx = { workspace = true, features = ["postgres", "macros", "runtime-tokio", "time", "uuid"] }
 cashu-starknet = { workspace = true }
 num-traits = { workspace = true }
 
-
+[dev-dependencies]
+sqlx = { workspace = true, features = ["runtime-tokio"] }

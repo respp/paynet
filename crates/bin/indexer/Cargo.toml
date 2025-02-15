@@ -8,8 +8,8 @@ invoice-payment-indexer = { workspace = true }
 
 starknet-types-core = { workspace = true }
 
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 rusqlite = { workspace = true, features = ["bundled"] }
+futures = { workspace = true }
 
-dotenv = { workspace = true }
 anyhow = { workspace = true }
