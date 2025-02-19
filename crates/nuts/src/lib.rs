@@ -1,3 +1,8 @@
+// Largely copied from https://github.com/cashubtc/cdk
+// Distributed under MIT license:
+// Copyright (c) 2023-2024, thesimplekid (BSD-3-Clause)
+// Copyright (c) 2024 Cashu Dev Kit Developers
+
 mod amount;
 mod mint_url;
 mod types;

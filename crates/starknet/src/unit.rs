@@ -29,13 +29,17 @@ impl From<Unit> for u32 {
     }
 }
 
+#[derive(Debug, Error)]
+#[error("invalid value for enum `Unit`")]
+pub struct UnitFromStrError;
+
 impl FromStr for Unit {
-    type Err = &'static str;
+    type Err = UnitFromStrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let unit = match s {
             "strk" => Self::Strk,
-            _ => return Err("invalid value for enum `Unit`"),
+            _ => return Err(UnitFromStrError),
         };
 
         Ok(unit)

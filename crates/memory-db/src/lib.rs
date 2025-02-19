@@ -33,7 +33,6 @@ pub struct KeysetInfo<U> {
     active: bool,
     max_order: u8,
     derivation_path_index: u32,
-    input_fee_ppk: u16,
 }
 
 impl<U: Unit> KeysetInfo<U> {
@@ -49,9 +48,6 @@ impl<U: Unit> KeysetInfo<U> {
     pub fn derivation_path_index(&self) -> u32 {
         self.derivation_path_index
     }
-    pub fn input_fee_ppk(&self) -> u16 {
-        self.input_fee_ppk
-    }
 }
 
 pub async fn get_keyset<U: FromStr>(
@@ -59,7 +55,7 @@ pub async fn get_keyset<U: FromStr>(
     keyset_id: &KeysetId,
 ) -> Result<KeysetInfo<U>, Error> {
     let record = sqlx::query!(
-        r#"SELECT unit, active, max_order, derivation_path_index, input_fee_ppk
+        r#"SELECT unit, active, max_order, derivation_path_index
         FROM keyset
         WHERE id = $1"#,
         keyset_id.as_i64()
@@ -72,7 +68,6 @@ pub async fn get_keyset<U: FromStr>(
         active: record.active,
         max_order: u8::try_from(record.max_order).map_err(|_| Error::DbToRuntimeConversion)?,
         derivation_path_index: u32::from_be_bytes(record.derivation_path_index.to_be_bytes()),
-        input_fee_ppk: u16::from_be_bytes(record.input_fee_ppk.to_be_bytes()),
     };
 
     Ok(info)
@@ -82,7 +77,7 @@ pub async fn get_keyset<U: FromStr>(
 pub async fn is_any_blind_message_already_used(
     conn: &mut PgConnection,
     blind_secrets: impl Iterator<Item = PublicKey>,
-) -> Result<bool, Error> {
+) -> Result<bool, sqlx::Error> {
     let ys: Vec<_> = blind_secrets.map(|pk| pk.to_bytes().to_vec()).collect();
 
     let record = sqlx::query!(
@@ -102,7 +97,7 @@ pub async fn is_any_blind_message_already_used(
 pub async fn is_any_proof_already_used(
     conn: &mut PgConnection,
     secret_derived_pubkeys: impl Iterator<Item = PublicKey>,
-) -> Result<bool, Error> {
+) -> Result<bool, sqlx::Error> {
     let ys: Vec<_> = secret_derived_pubkeys
         .map(|pk| pk.to_bytes().to_vec())
         .collect();
@@ -117,26 +112,6 @@ pub async fn is_any_proof_already_used(
     .await?;
 
     Ok(record.exists)
-}
-
-pub async fn get_keyset_input_fee(
-    conn: &mut PgConnection,
-    keyset_id: &KeysetId,
-) -> Result<u16, Error> {
-    let keyset_id = keyset_id.as_i64();
-
-    let record = sqlx::query!(
-        r#"SELECT input_fee_ppk FROM keyset where id = $1"#,
-        keyset_id
-    )
-    .fetch_one(conn)
-    .await?;
-
-    // pgsql doesn't support unsigned numbers so we cast them as signed before storing,
-    // and to the oposite when reading
-    let input_fee_ppk = u16::from_be_bytes(record.input_fee_ppk.to_be_bytes());
-
-    Ok(input_fee_ppk)
 }
 
 /// Handle concurency at the database level
@@ -181,7 +156,7 @@ pub async fn sum_amount_of_unit_in_circulation<U: Unit>(
     Ok(amount)
 }
 
-pub async fn start_db_tx(
+pub async fn begin_db_tx(
     pool: &Pool<Postgres>,
 ) -> Result<Transaction<'static, Postgres>, sqlx::Error> {
     let mut tx = pool.begin().await?;

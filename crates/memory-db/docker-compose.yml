@@ -9,7 +9,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=mint
+      - POSTGRES_DB=node
     volumes:
       - database_data:/var/lib/postgresql/data
 volumes:

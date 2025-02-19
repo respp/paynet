@@ -4,14 +4,18 @@ use cashu_starknet::Unit;
 use nuts::nut02::KeysetId;
 use parking_lot::RwLock;
 use sqlx::PgConnection;
+use thiserror::Error;
 
-use crate::errors::Error;
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Failed to load keyset with id {0} in db: {1}")]
+    UnknownKeysetId(KeysetId, #[source] memory_db::Error),
+}
 
 #[derive(Debug, Clone)]
 pub struct CachedKeysetInfo {
     active: bool,
     unit: Unit,
-    input_fee_ppk: u16,
 }
 
 impl CachedKeysetInfo {
@@ -21,9 +25,6 @@ impl CachedKeysetInfo {
     pub fn unit(&self) -> Unit {
         self.unit
     }
-    pub fn input_fee_ppk(&self) -> u16 {
-        self.input_fee_ppk
-    }
 }
 
 impl From<memory_db::KeysetInfo<Unit>> for CachedKeysetInfo {
@@ -31,7 +32,6 @@ impl From<memory_db::KeysetInfo<Unit>> for CachedKeysetInfo {
         Self {
             active: value.active(),
             unit: value.unit(),
-            input_fee_ppk: value.input_fee_ppk(),
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct KeysetCache {
 
 impl KeysetCache {
     pub async fn get_keyset_info(
-        &mut self,
+        &self,
         conn: &mut PgConnection,
         keyset_id: KeysetId,
     ) -> Result<CachedKeysetInfo, Error> {
@@ -57,7 +57,8 @@ impl KeysetCache {
 
         // Load the infos from db
         let keyset_info: CachedKeysetInfo = memory_db::get_keyset::<Unit>(conn, &keyset_id)
-            .await?
+            .await
+            .map_err(|e| Error::UnknownKeysetId(keyset_id, e))?
             .into();
 
         // Save the infos in the cache

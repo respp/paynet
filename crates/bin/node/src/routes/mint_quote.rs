@@ -1,112 +1,134 @@
-use crate::errors::{Error, MintError, QuoteError};
-use axum::{
-    extract::{Path, State},
-    Json,
-};
+use crate::grpc_service::GrpcState;
 use cashu_starknet::{MintPaymentRequest, PayInvoiceCalldata};
-use nuts::nut04::{MintQuoteRequest, MintQuoteResponse, MintQuoteState};
+use nuts::{
+    nut04::{MintQuoteResponse, MintQuoteState},
+    Amount,
+};
 use sqlx::PgPool;
 use starknet_types_core::felt::Felt;
+use thiserror::Error;
+use tonic::Status;
 use uuid::Uuid;
 
-use crate::{
-    app_state::{ArcQuoteTTLConfigState, NutsSettingsState},
-    methods::Method,
-    utils::unix_time,
-    Unit,
-};
+use crate::{methods::Method, utils::unix_time, Unit};
 
-pub async fn mint_quote(
-    Path(method): Path<Method>,
-    State(pool): State<PgPool>,
-    State(nuts): State<NutsSettingsState>,
-    State(quote_ttl): State<ArcQuoteTTLConfigState>,
-    Json(mint_quote_request): Json<MintQuoteRequest<Unit>>,
-) -> Result<Json<MintQuoteResponse<Uuid>>, Error> {
-    // Release the lock asap
-    let settings = {
-        let read_nuts_settings_lock = nuts.read().await;
+#[derive(Debug, Error)]
+pub enum Error {
+    // Db errors
+    #[error("failed to commit db tx: {0}")]
+    TxCommit(#[source] sqlx::Error),
+    #[error("failed to commit db tx: {0}")]
+    TxBegin(#[source] sqlx::Error),
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+    #[error(transparent)]
+    Db(#[from] memory_db::Error),
+    #[error("failed to serialize the quote request content")]
+    SerQuoteRequest(serde_json::Error),
+    // Mint quote specific errors
+    #[error("Minting is currently disabled")]
+    MintDisabled,
+    #[error("Unsupported unit `{0}` for method `{1}`")]
+    UnitNotSupported(Unit, Method),
+    #[error("Amount must be at least {0}, got {1}")]
+    AmountTooLow(Amount, Amount),
+    #[error("Amount must bellow {0}, got {1}")]
+    AmountTooHigh(Amount, Amount),
+}
 
-        if read_nuts_settings_lock.nut04.disabled {
-            Err(QuoteError::MintDisabled)?;
-        }
-
-        read_nuts_settings_lock
-            .nut04
-            .get_settings(method, mint_quote_request.unit)
-            .ok_or(QuoteError::UnitNotSupported(
-                mint_quote_request.unit,
-                method,
-            ))?
-    };
-
-    if let Some(min_amount) = settings.min_amount {
-        if min_amount > mint_quote_request.amount {
-            Err(QuoteError::AmountTooLow(
-                min_amount,
-                mint_quote_request.amount,
-            ))?;
-        }
-    }
-    if let Some(max_amount) = settings.max_amount {
-        if max_amount < mint_quote_request.amount {
-            Err(QuoteError::AmountTooHigh(
-                max_amount,
-                mint_quote_request.amount,
-            ))?;
+impl From<Error> for Status {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::TxBegin(error) | Error::TxCommit(error) | Error::Sqlx(error) => {
+                Status::internal(error.to_string())
+            }
+            Error::Db(error) => Status::internal(error.to_string()),
+            Error::SerQuoteRequest(error) => Status::internal(error.to_string()),
+            Error::MintDisabled => Status::failed_precondition(value.to_string()),
+            Error::UnitNotSupported(_, _)
+            | Error::AmountTooLow(_, _)
+            | Error::AmountTooHigh(_, _) => Status::invalid_argument(value.to_string()),
         }
     }
+}
 
-    if mint_quote_request.description.is_some() && !settings.description {
-        Err(MintError::DescriptionNotSupported)?;
+impl GrpcState {
+    pub async fn inner_mint_quote(
+        &self,
+        method: Method,
+        amount: Amount,
+        unit: Unit,
+    ) -> Result<MintQuoteResponse<Uuid>, Error> {
+        // Release the lock asap
+        let settings = {
+            let read_nuts_settings_lock = self.nuts.read().await;
+
+            if read_nuts_settings_lock.nut04.disabled {
+                Err(Error::MintDisabled)?;
+            }
+
+            read_nuts_settings_lock
+                .nut04
+                .get_settings(method, unit)
+                .ok_or(Error::UnitNotSupported(unit, method))?
+        };
+
+        if let Some(min_amount) = settings.min_amount {
+            if min_amount > amount {
+                Err(Error::AmountTooLow(min_amount, amount))?;
+            }
+        }
+        if let Some(max_amount) = settings.max_amount {
+            if max_amount < amount {
+                Err(Error::AmountTooHigh(max_amount, amount))?;
+            }
+        }
+
+        let response = match method {
+            Method::Starknet => {
+                new_starknet_mint_quote(&self.pg_pool, amount, unit, self.quote_ttl.mint_ttl())
+            }
+        }
+        .await?;
+
+        Ok(response)
     }
-
-    let response = match method {
-        Method::Starknet => new_starknet_mint_quote(pool, mint_quote_request, quote_ttl.mint_ttl()),
-    }
-    .await?;
-
-    Ok(Json(response))
 }
 
 /// Initialize a new Starknet mint quote
 async fn new_starknet_mint_quote(
-    pool: PgPool,
-    mint_quote_request: MintQuoteRequest<Unit>,
+    pool: &PgPool,
+    amount: Amount,
+    unit: Unit,
     mint_ttl: u64,
 ) -> Result<MintQuoteResponse<Uuid>, Error> {
     let expiry = unix_time() + mint_ttl;
     let quote = Uuid::new_v4();
 
-    let asset = mint_quote_request.unit.asset();
-    let amount = mint_quote_request
-        .unit
-        .convert_amount_into_u256(mint_quote_request.amount);
+    let request = {
+        let asset = unit.asset();
+        let amount = unit.convert_amount_into_u256(amount);
 
-    let request = serde_json::to_string(&MintPaymentRequest {
-        contract_address: Felt::from_hex_unchecked(
-            "0x03a94f47433e77630f288054330fb41377ffcc49dacf56568eeba84b017aa633",
-        ),
-        selector: Felt::from_hex_unchecked(
-            "0x027a12f554d018764f982295090da45b4ff0734785be0982b62c329b9ac38033",
-        ),
-        calldata: PayInvoiceCalldata {
-            invoice_id: quote.as_u128(),
-            asset,
-            amount,
-        },
-    })?;
+        serde_json::to_string(&MintPaymentRequest {
+            contract_address: Felt::from_hex_unchecked(
+                "0x03a94f47433e77630f288054330fb41377ffcc49dacf56568eeba84b017aa633",
+            ),
+            selector: Felt::from_hex_unchecked(
+                "0x027a12f554d018764f982295090da45b4ff0734785be0982b62c329b9ac38033",
+            ),
+            calldata: PayInvoiceCalldata {
+                invoice_id: quote.as_u128(),
+                asset,
+                amount,
+            },
+        })
+        .map_err(Error::SerQuoteRequest)?
+    };
 
     let mut conn = pool.acquire().await?;
-    memory_db::mint_quote::insert_new(
-        &mut conn,
-        quote,
-        mint_quote_request.unit,
-        mint_quote_request.amount,
-        &request,
-        expiry,
-    )
-    .await?;
+    memory_db::mint_quote::insert_new(&mut conn, quote, unit, amount, &request, expiry)
+        .await
+        .map_err(Error::Db)?;
 
     Ok(MintQuoteResponse {
         quote,

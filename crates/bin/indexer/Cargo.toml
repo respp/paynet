@@ -13,3 +13,4 @@ rusqlite = { workspace = true, features = ["bundled"] }
 futures = { workspace = true }
 
 anyhow = { workspace = true }
+dotenvy = {workspace = true }

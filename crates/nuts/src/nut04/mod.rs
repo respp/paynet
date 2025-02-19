@@ -38,10 +38,11 @@ impl TryFrom<i16> for MintQuoteState {
     type Error = InvalidValueForQuoteState;
 
     fn try_from(value: i16) -> Result<Self, Self::Error> {
+        // Those values are chosen to respect the protobuf standard
         match value {
-            0 => Ok(MintQuoteState::Unpaid),
-            1 => Ok(MintQuoteState::Paid),
-            2 => Ok(MintQuoteState::Issued),
+            1 => Ok(MintQuoteState::Unpaid),
+            2 => Ok(MintQuoteState::Paid),
+            3 => Ok(MintQuoteState::Issued),
             _ => Err(InvalidValueForQuoteState),
         }
     }
@@ -49,10 +50,11 @@ impl TryFrom<i16> for MintQuoteState {
 
 impl From<MintQuoteState> for i16 {
     fn from(value: MintQuoteState) -> Self {
+        // Those values are chosen to respect the protobuf standard
         match value {
-            MintQuoteState::Unpaid => 0,
-            MintQuoteState::Paid => 1,
-            MintQuoteState::Issued => 2,
+            MintQuoteState::Unpaid => 1,
+            MintQuoteState::Paid => 2,
+            MintQuoteState::Issued => 3,
         }
     }
 }

@@ -83,8 +83,8 @@ pub struct MeltQuoteResponse<Q> {
     pub quote: Q,
     /// The amount that needs to be provided
     pub amount: Amount,
-    /// The fee reserve that is required
-    pub fee_reserve: Amount,
+    /// The fee charged by the network
+    pub fee: Amount,
     /// Quote State
     pub state: MeltQuoteState,
     /// Unix timestamp until the quote is valid

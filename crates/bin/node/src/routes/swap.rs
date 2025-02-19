@@ -1,72 +1,120 @@
-use axum::{extract::State, Json};
+use cashu_starknet::Unit;
 use num_traits::CheckedAdd;
 use nuts::{
-    nut03::{SwapRequest, SwapResponse},
+    nut00::{BlindSignature, BlindedMessage, Proof},
     Amount,
 };
-use sqlx::PgPool;
+use thiserror::Error;
+use tonic::Status;
 
 use crate::{
-    app_state::SharedSignerClient,
-    errors::{Error, SwapError},
-    keyset_cache::KeysetCache,
-    logic::{check_outputs_allow_multiple_units, process_outputs, process_swap_inputs},
+    grpc_service::GrpcState,
+    logic::{
+        check_outputs_allow_multiple_units, process_outputs, process_swap_inputs, InputsError,
+        OutputsError,
+    },
 };
 
-pub async fn swap(
-    State(pool): State<PgPool>,
-    State(signer_client): State<SharedSignerClient>,
-    State(mut keyset_cache): State<KeysetCache>,
-    Json(swap_request): Json<SwapRequest>,
-) -> Result<Json<SwapResponse>, Error> {
-    let mut tx = memory_db::start_db_tx(&pool).await?;
+#[derive(Debug, Error)]
+pub enum Error {
+    // Db errors
+    #[error("failed to commit db tx: {0}")]
+    TxCommit(#[source] sqlx::Error),
+    #[error("failed to commit db tx: {0}")]
+    TxBegin(#[source] sqlx::Error),
+    #[error(transparent)]
+    Sqlx(#[from] sqlx::Error),
+    // Primitive processing errors
+    #[error(transparent)]
+    Outputs(#[from] OutputsError),
+    #[error(transparent)]
+    Inputs(#[from] InputsError),
+    // Swap specific errors
+    #[error("All input units should be present as output")]
+    UnbalancedUnits,
+    #[error("For unit {0}, Inputs: `{1}`, Outputs: `{2}`")]
+    TransactionUnbalanced(Unit, Amount, Amount),
+    #[error("the sum off all the outputs' amount and the fee must fit in a u64")]
+    TotalOutputAndFeeTooBig,
+}
 
-    let outputs_amounts =
-        check_outputs_allow_multiple_units(&mut tx, &mut keyset_cache, &swap_request.outputs)
-            .await?;
-
-    // Second round of verification and process
-    let (input_fees_and_amount, insert_spent_proofs_query_builder) = process_swap_inputs(
-        &mut tx,
-        signer_client.clone(),
-        &mut keyset_cache,
-        &swap_request.inputs,
-    )
-    .await?;
-
-    // Amount matching
-    for (asset, output_amount) in outputs_amounts {
-        let &(_, fee, input_amount) = input_fees_and_amount
-            .iter()
-            .find(|(u, _, _)| *u == asset)
-            .ok_or(SwapError::UnbalancedUnits)?;
-
-        if input_amount
-            != output_amount
-                .checked_add(&Amount::from(fee))
-                .ok_or(Error::Overflow)?
-        {
-            Err(SwapError::TransactionUnbalanced(
-                asset,
-                input_amount,
-                output_amount,
-                fee,
-            ))?;
+impl From<Error> for Status {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::TxBegin(error) | Error::TxCommit(error) | Error::Sqlx(error) => {
+                Status::internal(error.to_string())
+            }
+            Error::Outputs(error) => match error {
+                OutputsError::DuplicateOutput
+                | OutputsError::InactiveKeyset(_)
+                | OutputsError::MultipleUnits
+                | OutputsError::TotalAmountTooBig
+                | OutputsError::AlreadySigned => Status::invalid_argument(error.to_string()),
+                OutputsError::Db(sqlx::Error::RowNotFound) => Status::not_found(error.to_string()),
+                OutputsError::Db(_) | OutputsError::KeysetCache(_) => {
+                    Status::internal(error.to_string())
+                }
+                OutputsError::Signer(status) => status,
+            },
+            Error::Inputs(error) => error.into(),
+            Error::UnbalancedUnits
+            | Error::TransactionUnbalanced(_, _, _)
+            | Error::TotalOutputAndFeeTooBig => Status::invalid_argument(value.to_string()),
         }
     }
+}
 
-    // Output process
-    let (blind_signatures, insert_blind_signatures_query_builder) =
-        process_outputs(signer_client.clone(), &swap_request.outputs).await?;
+impl GrpcState {
+    pub async fn inner_swap(
+        &self,
+        inputs: &[Proof],
+        outputs: &[BlindedMessage],
+    ) -> Result<Vec<BlindSignature>, Error> {
+        let mut tx = memory_db::begin_db_tx(&self.pg_pool)
+            .await
+            .map_err(Error::TxBegin)?;
 
-    insert_spent_proofs_query_builder.execute(&mut tx).await?;
-    insert_blind_signatures_query_builder
-        .execute(&mut tx)
-        .await?;
+        let outputs_amounts =
+            check_outputs_allow_multiple_units(&mut tx, self.keyset_cache.clone(), outputs)
+                .await
+                .map_err(Error::Outputs)?;
 
-    tx.commit().await?;
+        let (input_fees_and_amount, insert_spent_proofs_query_builder) = process_swap_inputs(
+            &mut tx,
+            self.signer.clone(),
+            self.keyset_cache.clone(),
+            inputs,
+        )
+        .await
+        .map_err(Error::Inputs)?;
 
-    Ok(Json(SwapResponse {
-        signatures: blind_signatures,
-    }))
+        // Amount matching
+        for (asset, output_amount) in outputs_amounts {
+            let &(_, input_amount) = input_fees_and_amount
+                .iter()
+                .find(|(u, _)| *u == asset)
+                .ok_or(Error::UnbalancedUnits)?;
+
+            if input_amount != output_amount {
+                Err(Error::TransactionUnbalanced(
+                    asset,
+                    input_amount,
+                    output_amount,
+                ))?;
+            }
+        }
+
+        // Output process
+        let (blind_signatures, insert_blind_signatures_query_builder) =
+            process_outputs(&self.signer, outputs).await?;
+
+        insert_spent_proofs_query_builder.execute(&mut tx).await?;
+        insert_blind_signatures_query_builder
+            .execute(&mut tx)
+            .await?;
+
+        tx.commit().await.map_err(Error::TxCommit)?;
+
+        Ok(blind_signatures)
+    }
 }

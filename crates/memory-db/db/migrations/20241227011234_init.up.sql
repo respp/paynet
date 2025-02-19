@@ -5,8 +5,7 @@ CREATE TABLE IF NOT EXISTS keyset (
     unit TEXT NOT NULL,
     active BOOL NOT NULL,
     max_order INT2 NOT NULL,
-    derivation_path_index INT4 NOT NULL,
-    input_fee_ppk INT2 NOT NULL
+    derivation_path_index INT4 NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS keyset_unit_index ON keyset(unit);
@@ -58,7 +57,7 @@ CREATE TABLE IF NOT EXISTS melt_quote (
     id UUID PRIMARY KEY,
     unit TEXT NOT NULL,
     amount INT8 NOT NULL,
-    fee_reserve INT8 NOT NULL,
+    fee INT8 NOT NULL,
     request TEXT NOT NULL,
     expiry TIMESTAMPTZ NOT NULL,
     state INT2 NOT NULL

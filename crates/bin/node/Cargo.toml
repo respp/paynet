@@ -7,6 +7,7 @@ edition = "2021"
 axum = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tower = { workspace = true, features = ["timeout"] }
+tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true, features = ["serde"] }
@@ -22,6 +23,7 @@ url = { workspace = true }
 toml = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 tonic = { workspace = true }
+prost = { workspace = true }
 
 nuts = { workspace = true }
 cashu-starknet = { workspace = true }
@@ -36,7 +38,8 @@ rusqlite = { workspace = true }
 axum-response-cache = { workspace = true, optional = true }
 
 [features]
-default = ["nut19"]
-nut19 = ["nuts/nut19", "dep:axum-response-cache"]
+default = []
 uncollateralized = []
 
+[build-dependencies]
+tonic-build = "*"

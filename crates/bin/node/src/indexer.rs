@@ -1,6 +1,7 @@
 use futures::TryStreamExt;
 use invoice_payment_indexer::ApibaraIndexerService;
 use starknet_types_core::felt::Felt;
+use tracing::{debug, info};
 
 use crate::errors::{InitializationError, ServiceError};
 
@@ -25,14 +26,13 @@ pub async fn spawn_indexer_task(
 pub async fn listen_to_indexer(
     mut indexer_service: ApibaraIndexerService,
 ) -> Result<(), ServiceError> {
-    while indexer_service
+    info!("Listening indexer events");
+    while let Some(event) = indexer_service
         .try_next()
         .await
         .map_err(ServiceError::Indexer)?
-        .is_some()
     {
-        // Do nothing more
-        // the indexer is already writing the events in db
+        debug!("Event received:\n{:?}", event);
     }
 
     Ok(())

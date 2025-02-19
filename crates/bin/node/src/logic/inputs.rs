@@ -2,6 +2,8 @@ use cashu_starknet::Unit;
 use futures::TryFutureExt;
 use num_traits::CheckedAdd;
 use std::collections::HashSet;
+use thiserror::Error;
+use tonic::Status;
 
 use cashu_signer::VerifyProofsRequest;
 use memory_db::InsertSpentProofsQueryBuilder;
@@ -10,17 +12,57 @@ use sqlx::PgConnection;
 
 use crate::{
     app_state::SharedSignerClient,
-    errors::{Error, MeltError, ProofError, SwapError},
-    keyset_cache::KeysetCache,
+    keyset_cache::{self, KeysetCache},
 };
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("Failed to compute y by running hash_on_curve")]
+    HashOnCurve,
+    #[error("Duplicate input")]
+    DuplicateInput,
+    #[error("Melt only support inputs of the same unit")]
+    MultipleUnits,
+    #[error("the sum off all the inputs' amount must fit in a u64")]
+    TotalAmountTooBig,
+    #[error("the sum off all the inputs' fee must fit in a u64")]
+    TotalFeeTooBig,
+    #[error(transparent)]
+    Db(#[from] sqlx::Error),
+    #[error(transparent)]
+    KeysetCache(#[from] keyset_cache::Error),
+    #[error(transparent)]
+    Signer(#[from] tonic::Status),
+    #[error("Invalid Proof")]
+    Invalid,
+    #[error("Proof already used")]
+    Used,
+}
+
+impl From<Error> for Status {
+    fn from(value: Error) -> Self {
+        match value {
+            Error::HashOnCurve
+            | Error::DuplicateInput
+            | Error::MultipleUnits
+            | Error::TotalAmountTooBig
+            | Error::TotalFeeTooBig
+            | Error::Invalid
+            | Error::Used => Status::invalid_argument(value.to_string()),
+            Error::Db(sqlx::Error::RowNotFound) => Status::not_found(value.to_string()),
+            Error::Db(_) | Error::KeysetCache(_) => Status::internal(value.to_string()),
+            Error::Signer(status) => status,
+        }
+    }
+}
 
 pub async fn process_melt_inputs<'a>(
     conn: &mut PgConnection,
     signer: SharedSignerClient,
-    keyset_cache: &mut KeysetCache,
+    keyset_cache: KeysetCache,
     inputs: &'a [Proof],
-    expected_unit: Unit,
 ) -> Result<(Amount, InsertSpentProofsQueryBuilder<'a>), Error> {
+    let mut common_unit = None;
     let mut secrets = HashSet::new();
     let mut query_builder = InsertSpentProofsQueryBuilder::new();
     let mut total_amount = Amount::ZERO;
@@ -28,25 +70,35 @@ pub async fn process_melt_inputs<'a>(
     let mut verify_proofs_request = Vec::with_capacity(inputs.len());
 
     for proof in inputs {
+        let y = proof.y().map_err(|_| Error::HashOnCurve)?;
         // Uniqueness
-        if !secrets.insert(proof.y().map_err(|_| Error::HashOnCurve)?) {
-            Err(SwapError::DuplicateInput)?;
+        if !secrets.insert(y) {
+            Err(Error::DuplicateInput)?;
         }
 
-        let keyset_info = keyset_cache.get_keyset_info(conn, proof.keyset_id).await?;
+        let keyset_info = keyset_cache
+            .get_keyset_info(conn, proof.keyset_id)
+            .await
+            .map_err(Error::KeysetCache)?;
 
-        // Compute and increment fee
+        // Check all units are the same
         let unit = keyset_info.unit();
-        if expected_unit != unit {
-            return Err(MeltError::InvalidInputsUnit(expected_unit, unit).into());
+        match common_unit {
+            Some(u) => {
+                if u != unit {
+                    Err(Error::MultipleUnits)?;
+                }
+            }
+            None => common_unit = Some(unit),
         }
+
         // Incement total amount
         total_amount = total_amount
             .checked_add(&proof.amount)
-            .ok_or(Error::Overflow)?;
+            .ok_or(Error::TotalAmountTooBig)?;
 
         // Append to insert query
-        query_builder.add_row(proof)?;
+        query_builder.add_row(&y, proof);
 
         // Prepare payload for verification
         verify_proofs_request.push(cashu_signer::Proof {
@@ -65,40 +117,37 @@ pub async fn process_melt_inputs<'a>(
 pub async fn process_swap_inputs<'a>(
     conn: &mut PgConnection,
     signer: SharedSignerClient,
-    keyset_cache: &mut KeysetCache,
+    keyset_cache: KeysetCache,
     inputs: &'a [Proof],
-) -> Result<(Vec<(Unit, u16, Amount)>, InsertSpentProofsQueryBuilder<'a>), Error> {
+) -> Result<(Vec<(Unit, Amount)>, InsertSpentProofsQueryBuilder<'a>), Error> {
     // Input process
     let mut secrets = HashSet::new();
-    let mut fees_and_amounts: Vec<(Unit, u16, Amount)> = Vec::new();
+    let mut amounts_per_unit: Vec<(Unit, Amount)> = Vec::new();
     let mut query_builder = InsertSpentProofsQueryBuilder::new();
 
     let mut verify_proofs_request = Vec::with_capacity(inputs.len());
 
     for proof in inputs {
+        let y = proof.y().map_err(|_| Error::HashOnCurve)?;
         // Uniqueness
-        if !secrets.insert(proof.y().map_err(|_| Error::HashOnCurve)?) {
-            Err(SwapError::DuplicateInput)?;
+        if !secrets.insert(y) {
+            Err(Error::DuplicateInput)?;
         }
 
         let keyset_info = keyset_cache.get_keyset_info(conn, proof.keyset_id).await?;
 
-        // Compute and increment fee
-        let fee_for_this_proof = (keyset_info.input_fee_ppk() + 999) / 1000;
         let keyset_unit = keyset_info.unit();
-        match fees_and_amounts
-            .iter_mut()
-            .find(|(u, _, _)| *u == keyset_unit)
-        {
-            Some((_, f, a)) => {
-                *f = f.checked_add(fee_for_this_proof).ok_or(Error::Overflow)?;
-                *a = a.checked_add(&proof.amount).ok_or(Error::Overflow)?;
+        match amounts_per_unit.iter_mut().find(|(u, _)| *u == keyset_unit) {
+            Some((_, a)) => {
+                *a = a
+                    .checked_add(&proof.amount)
+                    .ok_or(Error::TotalAmountTooBig)?;
             }
-            None => fees_and_amounts.push((keyset_unit, fee_for_this_proof, proof.amount)),
+            None => amounts_per_unit.push((keyset_unit, proof.amount)),
         }
 
         // Append to insert query
-        query_builder.add_row(proof)?;
+        query_builder.add_row(&y, proof);
 
         // Prepare payload for verification
         verify_proofs_request.push(cashu_signer::Proof {
@@ -111,7 +160,7 @@ pub async fn process_swap_inputs<'a>(
 
     run_verification_queries(conn, secrets, signer, verify_proofs_request).await?;
 
-    Ok((fees_and_amounts, query_builder))
+    Ok((amounts_per_unit, query_builder))
 }
 
 async fn run_verification_queries(
@@ -132,15 +181,15 @@ async fn run_verification_queries(
     let res = tokio::try_join!(
         // Make sure those proof are valid
         query_signer_future
-            .map_err(Error::from)
-            .map_ok(|r| r.get_ref().is_valid),
+            .map_ok(|r| r.get_ref().is_valid)
+            .map_err(Error::Signer),
         // Make sure those inputs were not already used
-        memory_db::is_any_proof_already_used(conn, secrets.into_iter()).map_err(Error::from),
+        memory_db::is_any_proof_already_used(conn, secrets.into_iter()).map_err(Error::Db),
     );
 
     match res {
-        Ok((false, _)) => Err(ProofError::Invalid.into()),
-        Ok((_, true)) => Err(ProofError::Used.into()),
+        Ok((false, _)) => Err(Error::Invalid.into()),
+        Ok((_, true)) => Err(Error::Used.into()),
         Err(e) => Err(e),
         Ok((true, false)) => Ok(()),
     }

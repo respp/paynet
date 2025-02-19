@@ -1,1 +1,38 @@
-# cashu-starknet
+# Paynet
+
+## Unbank the masses
+
+While, in theory, blockchain technologies provided us with the tools to achieve financial sovereignty and security, we must recognise that, in practice, not much as changed for the masses.
+Adoption is still minimal and, even among crypto-holders, most keep seing it as "fake internet money", existing in a different world, without any actual impact in their daily life.
+
+We want to solve this in a "user first" approach, providing people and business with a convenient way to pay and be paid in a diversity of crypto assets.
+To do so, we are willing accept some trade-off, and to reintroduce one fundamental element in the equation: Trust.
+
+**We believe to be true that <ins>most</ins> people are fine with entrusting <ins>some</ins> amount of money to <ins>some</ins> institution.**
+
+Some people are not, this product is not for them, no hard feelings.
+
+Leveraging trust, we can build a solution that abstract any asset on any chain into a convenient, off-chain and privacy preserving mean of payment for everyday transactions. 
+
+## Codebase
+
+This mono-repository contains the whole stack allowing us to provide such a solution, form node to wallet, from smart-contracts to indexer.
+
+### Core architecture design
+
+![Diagram showing the overall architecture of the project, including the core actions: mint, melt and swap.](diagrams/overall-architecture.png)
+
+### Current state
+
+This codebase is under active developpement. Any contribution is welcome.
+
+We are currently building a minimalistic prototype, only implementing the most essential features.
+Therefore, at the moment we only support one blockchain, [Starknet](https://www.starknet.io/), as our asset provider.
+
+The project takes large inspiration from the [cashu](https://cashu.space/) project and sometime even pieces of code from its [Rust implementation](https://github.com/cashubtc/cdk). 
+As a consequence, we are using bitcoin's secp256k1 eliptic curve for our public-key cryptography.
+
+## Contact
+
+Feel free to DM me on telegram at [@tdelabro](https://t.me/tdelabro).
+

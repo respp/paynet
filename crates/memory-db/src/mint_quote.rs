@@ -84,7 +84,7 @@ pub async fn set_state(
     conn: &mut PgConnection,
     quote_id: Uuid,
     state: MintQuoteState,
-) -> Result<(), Error> {
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
             UPDATE mint_quote

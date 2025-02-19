@@ -22,15 +22,16 @@ mod server_errors;
 mod state;
 
 const ROOT_KEY_ENV_VAR: &str = "ROOT_KEY";
+const SOCKET_PORT_ENV_VAR: &str = "SOCKET_PORT";
 
 #[derive(Debug)]
-pub struct CashuSignerService {
+pub struct SignerState {
     root_key: SharedRootKey,
     keyset_cache: SharedKeySetCache,
 }
 
 #[tonic::async_trait]
-impl cashu_signer::Signer for CashuSignerService {
+impl cashu_signer::Signer for SignerState {
     async fn declare_keyset(
         &self,
         declare_keyset_request: Request<DeclareKeysetRequest>,
@@ -151,8 +152,15 @@ impl cashu_signer::Signer for CashuSignerService {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:10000".parse().unwrap();
+async fn main() -> Result<(), anyhow::Error> {
+    #[cfg(debug_assertions)]
+    dotenvy::from_filename("signer.env")?;
+
+    let socket_addr = {
+        let socket_port_env_var: String =
+            std::env::var(SOCKET_PORT_ENV_VAR).expect("env var `SOCKET_PORT` should be set");
+        format!("[::1]:{}", socket_port_env_var).parse()?
+    };
     let root_private_key = {
         let root_key_env_var: String =
             std::env::var(ROOT_KEY_ENV_VAR).expect("env var `ROOT_KEY` should be set");
@@ -160,14 +168,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .expect("content of `ROOT_KEY` env var should be a valid private key")
     };
 
-    let route_guide = CashuSignerService {
+    let signer_logic = SignerState {
         root_key: SharedRootKey(Arc::new(root_private_key)),
         keyset_cache: SharedKeySetCache(Arc::new(RwLock::new(HashMap::new()))),
     };
 
-    let svc = SignerServer::new(route_guide);
+    let svc = SignerServer::new(signer_logic);
 
-    Server::builder().add_service(svc).serve(addr).await?;
+    Server::builder()
+        .add_service(svc)
+        .serve(socket_addr)
+        .await?;
 
     Ok(())
 }

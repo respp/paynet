@@ -76,8 +76,8 @@ impl<'de> Deserialize<'de> for ChainId {
     where
         D: serde::Deserializer<'de>,
     {
-        let short_string = <&'de str>::deserialize(deserializer)?;
-        match short_string {
+        let short_string = <String>::deserialize(deserializer)?;
+        match short_string.as_str() {
             "mainnet" => Ok(ChainId::Mainnet),
             "sepolia" => Ok(ChainId::Sepolia),
             s => ChainId::new_custom(s).map_err(|_| {
@@ -102,6 +102,7 @@ pub struct Config {
     pub signer_url: String,
     /// The address of the on-chain account managing deposited assets
     pub recipient_address: Felt,
+    pub grpc_server_port: String,
 }
 
 const MAINNET_STRK_TOKEN_CONTRACT: Felt =
@@ -136,7 +137,7 @@ impl Config {
 pub fn read_env_variables() -> Result<EnvVariables, InitializationError> {
     // Only if we are in debug mode, we allow loading env variable from a .env file
     #[cfg(debug_assertions)]
-    dotenvy::dotenv().map_err(InitializationError::Dotenvy)?;
+    dotenvy::from_filename("node.env").map_err(InitializationError::Dotenvy)?;
 
     let apibara_token = std::env::var("APIBARA_TOKEN").map_err(InitializationError::Env)?;
     let pg_url = std::env::var("PG_URL").map_err(InitializationError::Env)?;

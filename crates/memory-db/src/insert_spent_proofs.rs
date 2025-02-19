@@ -1,7 +1,5 @@
-use nuts::nut00::Proof;
+use nuts::{nut00::Proof, nut01::PublicKey};
 use sqlx::{PgConnection, Postgres, QueryBuilder};
-
-use crate::Error;
 
 /// Generate a query following this model:
 /// INSERT INTO proof (y, amount, keyset_id, secret, c, state)
@@ -26,8 +24,8 @@ impl<'args> InsertSpentProofsQueryBuilder<'args> {
         }
     }
 
-    pub fn add_row(&mut self, proof: &'args Proof) -> Result<(), Error> {
-        let y = proof.y().map_err(|_| Error::HashOnCurve)?.to_bytes();
+    pub fn add_row(&mut self, y: &PublicKey, proof: &'args Proof) {
+        let y = y.to_bytes();
         let amount = proof.amount.into_i64_repr();
         let keyset_id = proof.keyset_id.as_i64();
         let secret: &str = proof.secret.as_ref();
@@ -53,11 +51,9 @@ impl<'args> InsertSpentProofsQueryBuilder<'args> {
             .push(", ")
             .push("1") // '1' is enum value for SPENT
             .push(')');
-
-        Ok(())
     }
 
-    pub async fn execute(mut self, conn: &mut PgConnection) -> Result<(), Error> {
+    pub async fn execute(mut self, conn: &mut PgConnection) -> Result<(), sqlx::Error> {
         _ = self
             .builder
             // 0 is enum for UNSPENT
@@ -101,9 +97,10 @@ mod query_builder {
             )
             .unwrap(),
         };
+        let y = proof.y().unwrap();
 
-        builder.add_row(&proof).unwrap();
-        builder.add_row(&proof).unwrap();
+        builder.add_row(&y, &proof);
+        builder.add_row(&y, &proof);
         let query = builder.builder.sql();
         assert_eq!(query, "INSERT INTO proof (y, amount, keyset_id, secret, c, state) VALUES ($1, $2, $3, $4, $5, 1), ($6, $7, $8, $9, $10, 1)");
     }

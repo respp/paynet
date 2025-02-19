@@ -11,7 +11,10 @@ tonic = { workspace = true }
 thiserror = { workspace = true }
 tokio-stream = { workspace = true }
 url = { workspace = true }
-prost = "0.13"
+prost = { workspace = true }
+dotenvy = { workspace = true }
+anyhow = { workspace = true }
+
 
 cashu-starknet = { workspace = true }
 

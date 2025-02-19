@@ -17,7 +17,7 @@ impl From<Method> for &'static str {
 }
 
 #[derive(Debug, Error)]
-#[error("Invalid value")]
+#[error("Invalid value for type `Method`")]
 pub struct MethodFromStrError;
 
 impl FromStr for Method {

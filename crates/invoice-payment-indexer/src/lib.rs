@@ -137,12 +137,15 @@ impl futures::Stream for ApibaraIndexerService {
                                 db::insert_payment_event(&tx, &block_infos.id, &payment_event)?;
                                 payment_events.push(PaymentEvent {
                                     asset: Felt::from_hex_unchecked(&payment_event.asset),
-                                    invoice_id: u128::from_str_radix(&payment_event.invoice_id, 16)
-                                        .unwrap(),
+                                    invoice_id: u128::from_str_radix(
+                                        &payment_event.invoice_id[2..],
+                                        16,
+                                    )
+                                    .unwrap(),
                                     amount: StarknetU256::from_parts(
-                                        u128::from_str_radix(&payment_event.amount_low, 16)
+                                        u128::from_str_radix(&payment_event.amount_low[2..], 16)
                                             .unwrap(),
-                                        u128::from_str_radix(&payment_event.amount_high, 16)
+                                        u128::from_str_radix(&payment_event.amount_high[2..], 16)
                                             .unwrap(),
                                     ),
                                 });

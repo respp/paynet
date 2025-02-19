@@ -10,43 +10,56 @@ service Node {
   // Mint
   rpc MintQuote (MintQuoteRequest) returns (MintQuoteResponse);
   rpc Mint (MintRequest) returns (MintResponse);
+  rpc MintQuoteState (QuoteStateRequest) returns (MintQuoteResponse);
   // Melt
   rpc Melt (MeltRequest) returns (MeltResponse);
+  rpc MeltQuoteState (QuoteStateRequest) returns (MeltResponse);
 
+  // TODO: add Acknowledgment route
+  // for the client to say he successfully stored the quote_id
 }
 
 message MintQuoteRequest {
-  uint64 amount = 1;
-  string unit = 2;
-  optional string description = 3; 
+  string method = 1;
+  uint64 amount = 2;
+  string unit = 3;
+  optional string description = 4; 
 }
 
 message MintQuoteResponse {
   string quote = 1;
   string request = 2;
-  MintQuoreState state = 3; 
+  MintQuoteState state = 3; 
   uint64 expiry = 4;
 }
 
 enum MintQuoteState {
-  MQS_UNSPECIFIED = 0;
-  MQS_UNPAID = 1;
-  MQS_PAID = 2;
-  MQS_ISSUED = 3;
+  MNQS_UNSPECIFIED = 0;
+  MNQS_UNPAID = 1;
+  MNQS_PAID = 2;
+  MNQS_ISSUED = 3;
 }
 
 message MintRequest {
-  string quote = 1;
-  repeated BlindedMessages outputs = 2;
+  string method = 1;
+  string quote = 2;
+  repeated cashu_core.BlindedMessage outputs = 3;
+}
+
+message QuoteStateRequest {
+  string method = 1;
+  string quote = 2;
 }
 
 message MintResponse {
-  repeated BlindSignature signatures = 1;
+  repeated cashu_core.BlindSignature signatures = 1;
 }
 
 message MeltRequest {
-  string request = 1;
-  repeated Proof intputs = 2;
+  string method = 1;
+  string unit = 2;
+  string request = 3;
+  repeated cashu_core.Proof inputs = 4;
 }
 
 message MeltResponse {
@@ -58,14 +71,18 @@ message MeltResponse {
 }
 
 enum MeltState {
-  MQS_UNSPECIFIED = 0;
-  MQS_UNPAID = 1;
-  MQS_PENDING = 2;
-  MQS_PAID = 3;
+  MLQS_UNSPECIFIED = 0;
+  MLQS_UNPAID = 1;
+  MLQS_PENDING = 2;
+  MLQS_PAID = 3;
 }
 
 message SwapRequest {
-  repeated Proofs inputs = 1;
-  repeated BlindedMessage outputs = 2;
+  repeated cashu_core.Proof inputs = 1;
+  repeated cashu_core.BlindedMessage outputs = 2;
+}
+
+message SwapResponse {
+  repeated cashu_core.BlindSignature signatures = 1;
 }
 

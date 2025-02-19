@@ -2,8 +2,6 @@ use nuts::nut00::BlindSignature;
 use nuts::nut01::PublicKey;
 use sqlx::{PgConnection, Postgres, QueryBuilder};
 
-use crate::Error;
-
 pub struct InsertBlindSignaturesQueryBuilder<'args> {
     builder: QueryBuilder<'args, Postgres>,
     first: bool,
@@ -43,7 +41,7 @@ impl InsertBlindSignaturesQueryBuilder<'_> {
             .push(')');
     }
 
-    pub async fn execute(mut self, conn: &mut PgConnection) -> Result<(), Error> {
+    pub async fn execute(mut self, conn: &mut PgConnection) -> Result<(), sqlx::Error> {
         _ = self
             .builder
             .push(r#";"#) // TODO: make sure this is ok

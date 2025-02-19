@@ -5,9 +5,9 @@ use starknet_types_core::felt::Felt;
 use thiserror::Error;
 
 mod unit;
-pub use unit::Unit;
+pub use unit::{Unit, UnitFromStrError};
 mod method;
-pub use method::Method;
+pub use method::{Method, MethodFromStrError};
 
 #[derive(Debug, Error)]
 pub enum Error {
