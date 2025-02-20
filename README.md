@@ -20,9 +20,16 @@ This mono-repository contains the whole stack allowing us to provide such a solu
 
 ### Core architecture design
 
-![Diagram showing the overall architecture of the project, including the core actions: mint, melt and swap.](diagrams/overall-architecture.png)
+The whole protocol revolves around users entrusting part of their assets to an actor running a node. This node provides them with bearer tokens for a value equivalent to the amount deposited. 
+Thanks to [a little cryptographic signatures scheme](https://gist.github.com/RubenSomsen/be7a4760dd4596d06963d67baf140406), those tokens cannot be traced by the node. The node can only see that the tokens were indeed minted by him, but not identify which one it is. 
+Therefore, the node cannot exercise targeted censorship; it is either up for everyone or down for everyone.
 
-### Current state
+### Core operations
+
+![Diagram showing the overall architecture of the project, including the core actions: mint, melt and swap.](diagrams/overall-architecture.png)
+*Sequence diagram showcasing how the core operations of the protocol (mint, melt, and swap) are handled.*
+
+### Current development state
 
 This codebase is under active developpement. Any contribution is welcome.
 
