@@ -5,7 +5,7 @@ use tracing::{debug, info};
 
 use crate::errors::{InitializationError, ServiceError};
 
-pub async fn spawn_indexer_task(
+pub async fn init_indexer_task(
     apibara_token: String,
     strk_token_address: Felt,
     recipient_address: Felt,

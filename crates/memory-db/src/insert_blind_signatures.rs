@@ -42,12 +42,7 @@ impl InsertBlindSignaturesQueryBuilder<'_> {
     }
 
     pub async fn execute(mut self, conn: &mut PgConnection) -> Result<(), sqlx::Error> {
-        _ = self
-            .builder
-            .push(r#";"#) // TODO: make sure this is ok
-            .build()
-            .execute(conn)
-            .await?;
+        _ = self.builder.push(r#";"#).build().execute(conn).await?;
 
         Ok(())
     }

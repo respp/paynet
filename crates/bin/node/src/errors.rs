@@ -74,6 +74,8 @@ pub enum InitializationError {
     BindTcp(#[source] std::io::Error),
     #[error("Failed to open the SqLite db: {0}")]
     OpenSqlite(#[source] rusqlite::Error),
+    #[error("Failed parse the Grpc address")]
+    InvalidGrpcAddress,
 }
 
 #[derive(Debug, Error)]

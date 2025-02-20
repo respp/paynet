@@ -139,7 +139,7 @@ impl Node for GrpcState {
         Ok(Response::new(MintQuoteResponse {
             quote: response.quote.to_string(),
             request: response.request,
-            state: i16::from(response.state).into(),
+            state: cashu_starknet_node::MintQuoteState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }
@@ -205,16 +205,16 @@ impl Node for GrpcState {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let melt_response = self
+        let response = self
             .inner_melt(method, unit, melt_payment_request, &inputs)
             .await?;
 
         Ok(Response::new(MeltResponse {
-            quote: melt_response.quote.to_string(),
-            amount: melt_response.amount.into(),
-            fee: melt_response.fee.into(),
-            state: i16::from(melt_response.state).into(),
-            expiry: melt_response.expiry,
+            quote: response.quote.to_string(),
+            amount: response.amount.into(),
+            fee: response.fee.into(),
+            state: cashu_starknet_node::MeltState::from(response.state).into(),
+            expiry: response.expiry,
         }))
     }
 
@@ -233,7 +233,7 @@ impl Node for GrpcState {
         Ok(Response::new(MintQuoteResponse {
             quote: response.quote.to_string(),
             request: response.request,
-            state: i16::from(response.state).into(),
+            state: cashu_starknet_node::MintQuoteState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }
@@ -254,7 +254,7 @@ impl Node for GrpcState {
             quote: response.quote.to_string(),
             amount: response.amount.into(),
             fee: response.fee.into(),
-            state: i16::from(response.state).into(),
+            state: cashu_starknet_node::MeltState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }

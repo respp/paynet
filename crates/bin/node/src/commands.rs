@@ -91,7 +91,7 @@ impl<'de> Deserialize<'de> for ChainId {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
+struct ConfigFileContent {
     /// The chain we are using as backend
     pub chain_id: ChainId,
     /// The address of the STRK token address
@@ -102,7 +102,20 @@ pub struct Config {
     pub signer_url: String,
     /// The address of the on-chain account managing deposited assets
     pub recipient_address: Felt,
-    pub grpc_server_port: String,
+    pub grpc_server_port: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Config {
+    /// The chain we are using as backend
+    pub chain_id: ChainId,
+    /// The address of the STRK token address
+    pub strk_address: Felt,
+    /// The url of the signer service
+    pub signer_url: String,
+    /// The address of the on-chain account managing deposited assets
+    pub recipient_address: Felt,
+    pub grpc_server_port: u16,
 }
 
 const MAINNET_STRK_TOKEN_CONTRACT: Felt =
@@ -118,9 +131,11 @@ pub enum ConfigError {
     MustSpecifyCustomContractAddressForCustom,
 }
 
-impl Config {
-    pub fn strk_token_contract_address(&self) -> Result<Felt, ConfigError> {
-        match (self.chain_id, self.strk_address) {
+impl TryFrom<ConfigFileContent> for Config {
+    type Error = ConfigError;
+
+    fn try_from(value: ConfigFileContent) -> Result<Self, Self::Error> {
+        let token_address = match (value.chain_id, value.strk_address) {
             (ChainId::Mainnet, None) => Ok(MAINNET_STRK_TOKEN_CONTRACT),
             (ChainId::Sepolia, None) => Ok(SEPOLIA_STRK_TOKEN_CONTRACT),
             (ChainId::Custom(_), Some(f)) => Ok(f),
@@ -130,7 +145,15 @@ impl Config {
             (chain_id, Some(_)) => Err(ConfigError::CannotSpecifyCustomContractAddressForChainId(
                 chain_id,
             )),
-        }
+        }?;
+
+        Ok(Config {
+            chain_id: value.chain_id,
+            strk_address: token_address,
+            signer_url: value.signer_url,
+            recipient_address: value.recipient_address,
+            grpc_server_port: value.grpc_server_port,
+        })
     }
 }
 

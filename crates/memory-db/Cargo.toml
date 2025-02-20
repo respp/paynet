@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nuts = { workspace = true }
+nuts = { workspace = true, features = ["sqlx"] }
 uuid = { workspace = true, features = ["v4"] }
 thiserror = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "macros", "runtime-tokio", "time", "uuid"] }

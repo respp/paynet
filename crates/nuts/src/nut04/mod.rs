@@ -3,13 +3,18 @@ use serde::{Deserialize, Serialize};
 use crate::{
     nut00::{BlindSignature, BlindedMessage},
     traits::Unit,
-    Amount, InvalidValueForQuoteState,
+    Amount,
 };
 
 #[derive(
     Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "UPPERCASE")]
+#[cfg_attr(
+    feature = "sqlx",
+    derive(sqlx::Type),
+    sqlx(type_name = "mint_quote_state", rename_all = "UPPERCASE")
+)]
 pub enum MintQuoteState {
     /// Quote has not been paid
     #[default]
@@ -31,31 +36,6 @@ impl core::fmt::Display for MintQuoteState {
                 MintQuoteState::Issued => "ISSUED",
             }
         )
-    }
-}
-
-impl TryFrom<i16> for MintQuoteState {
-    type Error = InvalidValueForQuoteState;
-
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
-        // Those values are chosen to respect the protobuf standard
-        match value {
-            1 => Ok(MintQuoteState::Unpaid),
-            2 => Ok(MintQuoteState::Paid),
-            3 => Ok(MintQuoteState::Issued),
-            _ => Err(InvalidValueForQuoteState),
-        }
-    }
-}
-
-impl From<MintQuoteState> for i16 {
-    fn from(value: MintQuoteState) -> Self {
-        // Those values are chosen to respect the protobuf standard
-        match value {
-            MintQuoteState::Unpaid => 1,
-            MintQuoteState::Paid => 2,
-            MintQuoteState::Issued => 3,
-        }
     }
 }
 

@@ -135,7 +135,3 @@ pub static SECP256K1: Lazy<Secp256k1<All>> = Lazy::new(|| {
     ctx.randomize(&mut rng);
     ctx
 });
-
-#[derive(Debug, Error)]
-#[error("Invalid Value for QuoteState")]
-pub struct InvalidValueForQuoteState;

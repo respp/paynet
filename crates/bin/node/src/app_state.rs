@@ -10,7 +10,6 @@ use tonic::transport::Channel;
 use crate::{keyset_cache::KeysetCache, methods::Method};
 
 pub type NutsSettingsState = Arc<RwLock<NutsSettings<Method, Unit>>>;
-pub type ArcQuoteTTLConfigState = Arc<QuoteTTLConfigState>;
 pub type SharedSignerClient = Arc<RwLock<cashu_signer::SignerClient<Channel>>>;
 
 // the application state
@@ -40,6 +39,11 @@ impl AppState {
     }
 }
 
+/// Quote Time To Live config
+///
+/// Specifies for how long, in seconds, the quote issued by the node will be valid.
+///
+/// We use AtomicU64 to share this easily between threads.
 #[derive(Debug)]
 pub struct QuoteTTLConfigState {
     mint_ttl: AtomicU64,
@@ -47,9 +51,11 @@ pub struct QuoteTTLConfigState {
 }
 
 impl QuoteTTLConfigState {
+    /// Returns the number of seconds a new mint quote is valid for
     pub fn mint_ttl(&self) -> u64 {
         self.mint_ttl.load(std::sync::atomic::Ordering::Relaxed)
     }
+    /// Returns the number of seconds a new melt quote is valid for
     pub fn melt_ttl(&self) -> u64 {
         self.melt_ttl.load(std::sync::atomic::Ordering::Relaxed)
     }

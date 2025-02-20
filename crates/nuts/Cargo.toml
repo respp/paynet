@@ -15,6 +15,7 @@ num-bigint = { workspace = true }
 once_cell = { workspace = true }
 tracing = { workspace = true }
 hex = { workspace = true }
+sqlx = { workspace = true, optional = true }
 
 starknet-types-core = { workspace = true, optional = true }
 
@@ -23,4 +24,5 @@ rand = { workspace = true }
 
 [features]
 starknet = ["dep:starknet-types-core"]
+sqlx = ["dep:sqlx"]
 nut19 = []

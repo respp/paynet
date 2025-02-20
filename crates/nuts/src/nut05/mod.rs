@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{nut00::Proofs, traits::Unit, Amount, InvalidValueForQuoteState};
+use crate::{nut00::Proofs, traits::Unit, Amount};
 
 /// NUT05 Error
 #[derive(Debug, Error)]
@@ -20,6 +20,11 @@ pub enum Error {
     Debug, Clone, Copy, Hash, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "UPPERCASE")]
+#[cfg_attr(
+    feature = "sqlx",
+    derive(sqlx::Type),
+    sqlx(type_name = "melt_quote_state", rename_all = "UPPERCASE")
+)]
 pub enum MeltQuoteState {
     /// Quote has not been paid
     #[default]
@@ -28,43 +33,6 @@ pub enum MeltQuoteState {
     Pending,
     /// Payment has been done on chain
     Paid,
-}
-
-impl TryFrom<i16> for MeltQuoteState {
-    type Error = InvalidValueForQuoteState;
-
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(MeltQuoteState::Unpaid),
-            1 => Ok(MeltQuoteState::Pending),
-            2 => Ok(MeltQuoteState::Paid),
-            _ => Err(InvalidValueForQuoteState),
-        }
-    }
-}
-
-impl From<MeltQuoteState> for i16 {
-    fn from(value: MeltQuoteState) -> Self {
-        match value {
-            MeltQuoteState::Unpaid => 0,
-            MeltQuoteState::Pending => 1,
-            MeltQuoteState::Paid => 2,
-        }
-    }
-}
-
-impl core::fmt::Display for MeltQuoteState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                MeltQuoteState::Unpaid => "UNPAID",
-                MeltQuoteState::Pending => "PENDING",
-                MeltQuoteState::Paid => "PAID",
-            }
-        )
-    }
 }
 
 /// Melt quote request [NUT-05]

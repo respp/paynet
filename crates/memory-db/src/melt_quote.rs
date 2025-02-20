@@ -24,7 +24,7 @@ pub async fn insert_new<U: Unit>(
         OffsetDateTime::from_unix_timestamp(expiry).map_err(|_| Error::RuntimeToDbConversion)?;
 
     sqlx::query!(
-        r#"INSERT INTO melt_quote (id, unit, amount, fee, request, expiry, state) VALUES ($1, $2, $3, $4, $5, $6, 0)"#,
+        r#"INSERT INTO melt_quote (id, unit, amount, fee, request, expiry, state) VALUES ($1, $2, $3, $4, $5, $6, 'UNPAID')"#,
         quote_id,
         &unit.to_string(),
         amount.into_i64_repr(),
@@ -41,16 +41,12 @@ pub async fn build_response_from_db(
     quote_id: Uuid,
 ) -> Result<MeltQuoteResponse<Uuid>, Error> {
     let record = sqlx::query!(
-        r#"SELECT amount, fee, state, expiry FROM melt_quote where id = $1"#,
+        r#"SELECT amount, fee, state as "state: MeltQuoteState", expiry FROM melt_quote where id = $1"#,
         quote_id
     )
     .fetch_one(conn)
     .await?;
 
-    let state = record
-        .state
-        .try_into()
-        .map_err(|_| Error::DbToRuntimeConversion)?;
     let expiry = record
         .expiry
         .unix_timestamp()
@@ -63,7 +59,7 @@ pub async fn build_response_from_db(
         quote: quote_id,
         amount,
         fee,
-        state,
+        state: record.state,
         expiry,
     })
 }
@@ -73,7 +69,7 @@ pub async fn get_data<U: Unit>(
     quote_id: Uuid,
 ) -> Result<(U, Amount, Amount, MeltQuoteState, u64), Error> {
     let record = sqlx::query!(
-        r#"SELECT unit, amount, fee, state, expiry FROM melt_quote where id = $1"#,
+        r#"SELECT unit, amount, fee, state as "state: MeltQuoteState", expiry FROM melt_quote where id = $1"#,
         quote_id
     )
     .fetch_one(conn)
@@ -82,24 +78,24 @@ pub async fn get_data<U: Unit>(
     let unit = U::from_str(&record.unit).map_err(|_| Error::DbToRuntimeConversion)?;
     let amount = Amount::from_i64_repr(record.amount);
     let fee = Amount::from_i64_repr(record.fee);
-    let state = MeltQuoteState::try_from(record.state).map_err(|_| Error::DbToRuntimeConversion)?;
     let expiry = record
         .expiry
         .unix_timestamp()
         .try_into()
         .map_err(|_| Error::DbToRuntimeConversion)?;
 
-    Ok((unit, amount, fee, state, expiry))
+    Ok((unit, amount, fee, record.state, expiry))
 }
 
 pub async fn get_state(conn: &mut PgConnection, quote_id: Uuid) -> Result<MeltQuoteState, Error> {
-    let record = sqlx::query!(r#"SELECT state FROM melt_quote where id = $1"#, quote_id)
-        .fetch_one(conn)
-        .await?;
+    let record = sqlx::query!(
+        r#"SELECT state as "state: MeltQuoteState" FROM melt_quote where id = $1"#,
+        quote_id
+    )
+    .fetch_one(conn)
+    .await?;
 
-    let state = MeltQuoteState::try_from(record.state).map_err(|_| Error::DbToRuntimeConversion)?;
-
-    Ok(state)
+    Ok(record.state)
 }
 
 pub async fn set_state(
@@ -114,7 +110,7 @@ pub async fn set_state(
             WHERE id = $1
         "#,
         quote_id,
-        i16::from(state)
+        state as MeltQuoteState,
     )
     .fetch_one(conn)
     .await?;

@@ -42,15 +42,15 @@ async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt().init();
     info!("Initializing node...");
 
+    // Read args and env
     let args = commands::Args::parse();
     let config = args.read_config()?;
-    // Do this early to fail early
-    let strk_token_address = config
-        .strk_token_contract_address()
-        .map_err(InitializationError::Config)?;
     let env_variables = read_env_variables()?;
+
+    // Connect to db
     let pg_pool = connect_to_db_and_run_migrations(&env_variables.pg_url).await?;
 
+    // Define the node settings
     let nuts_settings = NutsSettings {
         nut04: nuts::nut04::Settings {
             methods: vec![MintMethodSettings {
@@ -73,10 +73,12 @@ async fn main() -> Result<(), Error> {
         },
     };
 
+    // Connect to the signer service
     let signer_client = cashu_signer::SignerClient::connect(config.signer_url)
         .await
         .map_err(SignerError::from)?;
 
+    // Launch tonic server task
     let grpc_service = GrpcState::new(
         pg_pool,
         signer_client,
@@ -86,7 +88,6 @@ async fn main() -> Result<(), Error> {
             melt_ttl: 3600,
         },
     );
-
     let addr = format!("[::1]:{}", config.grpc_server_port)
         .parse()
         .unwrap();
@@ -95,9 +96,10 @@ async fn main() -> Result<(), Error> {
         .serve(addr)
         .map_err(ServiceError::TonicTransport);
 
-    let indexer_service = indexer::spawn_indexer_task(
+    // Launch indexer task
+    let indexer_service = indexer::init_indexer_task(
         env_variables.apibara_token,
-        strk_token_address,
+        config.strk_address,
         config.recipient_address,
     )
     .await?;

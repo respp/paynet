@@ -38,13 +38,15 @@ CREATE INDEX IF NOT EXISTS proof_secret_index ON proof(secret);
 
 -- Mint quote
 
+CREATE TYPE mint_quote_state AS ENUM ('UNPAID', 'PAID', 'ISSUED');
+
 CREATE TABLE IF NOT EXISTS mint_quote (
     id UUID PRIMARY KEY,
     unit TEXT NOT NULL,
     amount INT8 NOT NULL,
     request TEXT NOT NULL,
     expiry TIMESTAMPTZ NOT NULL,
-    state INT2 NOT NULL
+    state mint_quote_state NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS mint_quote_unit ON mint_quote(unit);
@@ -53,6 +55,8 @@ CREATE INDEX IF NOT EXISTS mint_quote_expiry ON mint_quote(expiry);
 
 -- Melt quote
 
+CREATE TYPE melt_quote_state AS ENUM ('UNPAID', 'PENDING', 'PAID');
+
 CREATE TABLE IF NOT EXISTS melt_quote (
     id UUID PRIMARY KEY,
     unit TEXT NOT NULL,
@@ -60,7 +64,7 @@ CREATE TABLE IF NOT EXISTS melt_quote (
     fee INT8 NOT NULL,
     request TEXT NOT NULL,
     expiry TIMESTAMPTZ NOT NULL,
-    state INT2 NOT NULL
+    state melt_quote_state NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS melt_quote_unit ON melt_quote(unit);
