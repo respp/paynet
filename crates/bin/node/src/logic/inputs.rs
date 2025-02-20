@@ -7,7 +7,7 @@ use tonic::Status;
 
 use cashu_signer::VerifyProofsRequest;
 use memory_db::InsertSpentProofsQueryBuilder;
-use nuts::{nut00::Proof, nut01::PublicKey, Amount};
+use nuts::{Amount, nut00::Proof, nut01::PublicKey};
 use sqlx::PgConnection;
 
 use crate::{
@@ -188,8 +188,8 @@ async fn run_verification_queries(
     );
 
     match res {
-        Ok((false, _)) => Err(Error::Invalid.into()),
-        Ok((_, true)) => Err(Error::Used.into()),
+        Ok((false, _)) => Err(Error::Invalid),
+        Ok((_, true)) => Err(Error::Used),
         Err(e) => Err(e),
         Ok((true, false)) => Ok(()),
     }

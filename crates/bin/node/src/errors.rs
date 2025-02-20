@@ -1,5 +1,5 @@
-use axum::{http::StatusCode, response::IntoResponse, Json};
-use nuts::{dhke, nut00::CashuError, nut01, nut02};
+use axum::{Json, http::StatusCode, response::IntoResponse};
+use nuts::{dhke, nut00::CashuError, nut02};
 use thiserror::Error;
 
 use crate::commands::ConfigError;
@@ -22,8 +22,6 @@ pub enum Error {
     Starknet(#[from] cashu_starknet::Error),
     #[error(transparent)]
     Tonic(#[from] tonic::Status),
-    #[error(transparent)]
-    Signer(#[from] SignerError),
     #[error(transparent)]
     Service(#[from] ServiceError),
     #[error("Keyset doesn't exist in this mint")]
@@ -76,24 +74,16 @@ pub enum InitializationError {
     OpenSqlite(#[source] rusqlite::Error),
     #[error("Failed parse the Grpc address")]
     InvalidGrpcAddress,
+    #[error("failed to connect to signer")]
+    SignerConnection(tonic::transport::Error),
 }
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
-    #[error("Failed to await on indexer future: {0}")]
-    JoinIndexer(#[source] tokio::task::JoinError),
     #[error("Failed to run the indexer: {0}")]
-    Indexer(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    Indexer(#[source] anyhow::Error),
     #[error("Failed to serve the axum server: {0}")]
     AxumServe(#[source] std::io::Error),
     #[error(transparent)]
     TonicTransport(#[from] tonic::transport::Error),
-}
-
-#[derive(Debug, Error)]
-pub enum SignerError {
-    #[error("invalid bytes C: {0}")]
-    BlindSignature(#[from] nut01::Error),
-    #[error("failed to connect")]
-    Connection(#[from] tonic::transport::Error),
 }

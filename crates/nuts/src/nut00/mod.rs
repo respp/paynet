@@ -6,7 +6,7 @@ use num_traits::CheckedAdd;
 use secret::Secret;
 use serde::{Deserialize, Serialize};
 
-use crate::{dhke::hash_to_curve, nut01::PublicKey, nut02::KeysetId, Amount};
+use crate::{Amount, dhke::hash_to_curve, nut01::PublicKey, nut02::KeysetId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CashuError {
@@ -50,7 +50,6 @@ impl ProofsMethods for Proofs {
         self.iter()
             .map(|p| p.y())
             .collect::<Result<Vec<PublicKey>, _>>()
-            .map_err(Into::into)
     }
 }
 

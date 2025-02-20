@@ -101,7 +101,7 @@ pub struct PaymentEvent {
 }
 
 impl futures::Stream for ApibaraIndexerService {
-    type Item = Result<Message, Box<dyn std::error::Error + Send + Sync + 'static>>;
+    type Item = anyhow::Result<Message>;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
@@ -120,7 +120,7 @@ impl futures::Stream for ApibaraIndexerService {
                     } => {
                         let tx = match s.db_conn.transaction() {
                             Ok(tx) => tx,
-                            Err(e) => return Poll::Ready(Some(Err(Box::new(e)))),
+                            Err(e) => return Poll::Ready(Some(Err(e.into()))),
                         };
 
                         let mut payment_events = Vec::with_capacity(batch.len());
@@ -132,7 +132,9 @@ impl futures::Stream for ApibaraIndexerService {
                             for event in block.events.iter() {
                                 let payment_event = match event.event.as_ref().unwrap().try_into() {
                                     Ok(pe) => pe,
-                                    Err(e) => return Poll::Ready(Some(Err(Box::new(e)))),
+                                    Err(e) => {
+                                        return Poll::Ready(Some(Err(anyhow::Error::from(e))));
+                                    }
                                 };
                                 db::insert_payment_event(&tx, &block_infos.id, &payment_event)?;
                                 payment_events.push(PaymentEvent {
@@ -154,7 +156,7 @@ impl futures::Stream for ApibaraIndexerService {
 
                         match tx.commit() {
                             Ok(()) => Poll::Ready(Some(Ok(Message::Payment(payment_events)))),
-                            Err(e) => Poll::Ready(Some(Err(Box::new(e)))),
+                            Err(e) => Poll::Ready(Some(Err(e.into()))),
                         }
                     }
                     DataMessage::Invalidate { cursor } => {
@@ -164,12 +166,12 @@ impl futures::Stream for ApibaraIndexerService {
                                 last_valid_block_number: cursor.order_key,
                                 last_valid_block_hash: cursor.unique_key,
                             }))),
-                            Err(e) => Poll::Ready(Some(Err(Box::new(e)))),
+                            Err(e) => Poll::Ready(Some(Err(e.into()))),
                         }
                     }
                     DataMessage::Heartbeat => Poll::Pending,
                 },
-                Err(e) => Poll::Ready(Some(Err(e.into()))),
+                Err(e) => Poll::Ready(Some(Err(anyhow::Error::from(e.into_error())))),
             },
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

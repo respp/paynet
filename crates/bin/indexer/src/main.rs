@@ -1,4 +1,3 @@
-use anyhow::Error;
 use futures::TryStreamExt;
 use invoice_payment_indexer::ApibaraIndexerService;
 use starknet_types_core::felt::Felt;
@@ -28,11 +27,7 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    while let Some(event) = indexer_service
-        .try_next()
-        .await
-        .map_err(Error::from_boxed)?
-    {
+    while let Some(event) = indexer_service.try_next().await? {
         println!("{:#?}", event);
         // Do nothing more
         // the indexer is already writing the events in db

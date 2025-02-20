@@ -1,21 +1,21 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::Amount;
 use crate::nut00::Proof;
 use crate::nut01::PublicKey;
 use crate::nut02::KeysetId;
 use crate::traits::Unit;
-use crate::Amount;
 use num_traits::CheckedAdd;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::mint_url::MintUrl;
-use bitcoin::base64::engine::{general_purpose, GeneralPurpose};
-use bitcoin::base64::{alphabet, Engine as _};
+use bitcoin::base64::engine::{GeneralPurpose, general_purpose};
+use bitcoin::base64::{Engine as _, alphabet};
 
 use super::secret::Secret;
-use super::{errors::Error, Proofs};
+use super::{Proofs, errors::Error};
 
 /// Token V4
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

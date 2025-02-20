@@ -19,10 +19,9 @@ pub mod nut06;
 pub mod nut19;
 
 pub use amount::*;
-use thiserror::Error;
 pub use types::*;
 
-use bitcoin::secp256k1::{rand, All, Secp256k1};
+use bitcoin::secp256k1::{All, Secp256k1, rand};
 use once_cell::sync::Lazy;
 
 pub mod traits {

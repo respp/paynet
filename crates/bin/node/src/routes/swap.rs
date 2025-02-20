@@ -1,8 +1,7 @@
 use cashu_starknet::Unit;
-use num_traits::CheckedAdd;
 use nuts::{
-    nut00::{BlindSignature, BlindedMessage, Proof},
     Amount,
+    nut00::{BlindSignature, BlindedMessage, Proof},
 };
 use thiserror::Error;
 use tonic::Status;
@@ -10,8 +9,8 @@ use tonic::Status;
 use crate::{
     grpc_service::GrpcState,
     logic::{
-        check_outputs_allow_multiple_units, process_outputs, process_swap_inputs, InputsError,
-        OutputsError,
+        InputsError, OutputsError, check_outputs_allow_multiple_units, process_outputs,
+        process_swap_inputs,
     },
 };
 

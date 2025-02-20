@@ -2,13 +2,13 @@ use cashu_starknet::Unit;
 use cashu_starknet_node::NodeServer;
 use clap::Parser;
 use commands::read_env_variables;
-use errors::{Error, InitializationError, ServiceError, SignerError};
+use errors::{Error, InitializationError, ServiceError};
 use futures::TryFutureExt;
 use grpc_service::GrpcState;
 use methods::Method;
 use nuts::{
-    nut04::MintMethodSettings, nut05::MeltMethodSettings, nut06::NutsSettings, Amount,
-    QuoteTTLConfig,
+    Amount, QuoteTTLConfig, nut04::MintMethodSettings, nut05::MeltMethodSettings,
+    nut06::NutsSettings,
 };
 use sqlx::PgPool;
 use tokio::try_join;
@@ -76,7 +76,7 @@ async fn main() -> Result<(), Error> {
     // Connect to the signer service
     let signer_client = cashu_signer::SignerClient::connect(config.signer_url)
         .await
-        .map_err(SignerError::from)?;
+        .map_err(InitializationError::SignerConnection)?;
 
     // Launch tonic server task
     let grpc_service = GrpcState::new(
