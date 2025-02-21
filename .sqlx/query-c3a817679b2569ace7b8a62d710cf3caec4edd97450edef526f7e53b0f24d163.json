@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT SUM(amount) AS \"sum!: i64\" FROM blind_signature \n            INNER JOIN keyset ON blind_signature.keyset_id = keyset.id\n            WHERE keyset.unit = $1;\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sum!: i64",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c3a817679b2569ace7b8a62d710cf3caec4edd97450edef526f7e53b0f24d163"
+}

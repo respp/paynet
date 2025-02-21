@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT state as \"state: MeltQuoteState\" FROM melt_quote where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "state: MeltQuoteState",
+        "type_info": {
+          "Custom": {
+            "name": "melt_quote_state",
+            "kind": {
+              "Enum": [
+                "UNPAID",
+                "PENDING",
+                "PAID"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0544e6ef94c93022b013768853ef7312bb220a2e31dde344cb1436dfaaefbee3"
+}

@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT unit, amount, fee, state as \"state: MeltQuoteState\", expiry FROM melt_quote where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "unit",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "amount",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "fee",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "state: MeltQuoteState",
+        "type_info": {
+          "Custom": {
+            "name": "melt_quote_state",
+            "kind": {
+              "Enum": [
+                "UNPAID",
+                "PENDING",
+                "PAID"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "expiry",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9fc89daea3eab94dfdbac0a715869628e24b4c807f8937a2705beabb7a70565c"
+}

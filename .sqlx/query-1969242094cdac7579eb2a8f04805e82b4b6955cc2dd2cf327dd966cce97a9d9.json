@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE mint_quote\n            SET state = $2\n            WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "mint_quote_state",
+            "kind": {
+              "Enum": [
+                "UNPAID",
+                "PAID",
+                "ISSUED"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1969242094cdac7579eb2a8f04805e82b4b6955cc2dd2cf327dd966cce97a9d9"
+}
