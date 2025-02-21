@@ -1,4 +1,4 @@
-//! NUT-06: Mint Information
+//! NUT-06: Node Information
 //!
 //! <https://github.com/cashubtc/nuts/blob/main/06.md>
 
@@ -13,23 +13,23 @@ use crate::{nut05, traits};
 use super::nut01::PublicKey;
 use super::nut04;
 
-/// Mint Version
+/// Node Version
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MintVersion {
-    /// Mint Software name
+pub struct NodeVersion {
+    /// Node Software name
     pub name: String,
-    /// Mint Version
+    /// Node Version
     pub version: String,
 }
 
-impl MintVersion {
-    /// Create new [`MintVersion`]
+impl NodeVersion {
+    /// Create new [`NodeVersion`]
     pub fn new(name: String, version: String) -> Self {
         Self { name, version }
     }
 }
 
-impl Serialize for MintVersion {
+impl Serialize for NodeVersion {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -39,7 +39,7 @@ impl Serialize for MintVersion {
     }
 }
 
-impl<'de> Deserialize<'de> for MintVersion {
+impl<'de> Deserialize<'de> for NodeVersion {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -49,26 +49,26 @@ impl<'de> Deserialize<'de> for MintVersion {
         if parts.len() != 2 {
             return Err(serde::de::Error::custom("Invalid input string"));
         }
-        Ok(MintVersion {
+        Ok(NodeVersion {
             name: parts[0].to_string(),
             version: parts[1].to_string(),
         })
     }
 }
 
-/// Mint Info [NIP-06]
+/// Node Info [NIP-06]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MintInfo<M: traits::Method, U> {
-    /// name of the mint and should be recognizable
+pub struct NodeInfo<M: traits::Method, U> {
+    /// name of the node and should be recognizable
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// hex pubkey of the mint
+    /// hex pubkey of the node
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pubkey: Option<PublicKey>,
     /// implementation name and the version running
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<MintVersion>,
-    /// short description of the mint
+    pub version: Option<NodeVersion>,
+    /// short description of the node
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// long description
@@ -79,10 +79,10 @@ pub struct MintInfo<M: traits::Method, U> {
     pub contact: Option<Vec<ContactInfo>>,
     /// shows which NUTs the mint supports
     pub nuts: NutsSettings<M, U>,
-    /// Mint's icon URL
+    /// Node's icon URL
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
-    /// Mint's endpoint URLs
+    /// Node's endpoint URLs
     #[serde(skip_serializing_if = "Option::is_none")]
     pub urls: Option<Vec<String>>,
     /// message of the day that the wallet must display to the user
@@ -93,7 +93,7 @@ pub struct MintInfo<M: traits::Method, U> {
     pub time: Option<u64>,
 }
 
-impl<M: traits::Method, U> MintInfo<M, U> {
+impl<M: traits::Method, U> NodeInfo<M, U> {
     /// Set name
     pub fn name<S>(self, name: S) -> Self
     where
@@ -113,8 +113,8 @@ impl<M: traits::Method, U> MintInfo<M, U> {
         }
     }
 
-    /// Set [`MintVersion`]
-    pub fn version(self, mint_version: MintVersion) -> Self {
+    /// Set [`NodeVersion`]
+    pub fn version(self, mint_version: NodeVersion) -> Self {
         Self {
             version: Some(mint_version),
             ..self
@@ -325,14 +325,14 @@ mod tests {
     }
 }"#;
 
-        let _mint_info: MintInfo<TestMethod, TestUnit> =
+        let _mint_info: NodeInfo<TestMethod, TestUnit> =
             serde_json::from_str(mint_info_str).unwrap();
     }
 
     #[test]
     fn test_ser_mint_info() {
         /*
-                let mint_info = serde_json::to_string(&MintInfo {
+                let mint_info = serde_json::to_string(&NodeInfo {
                     name: Some("Cashu-crab".to_string()),
                     pubkey: None,
                     version: None,
@@ -404,7 +404,7 @@ mod tests {
     }
   }
 }"#;
-        let info: MintInfo<TestMethod, TestUnit> = serde_json::from_str(mint_info_str).unwrap();
+        let info: NodeInfo<TestMethod, TestUnit> = serde_json::from_str(mint_info_str).unwrap();
         let mint_info_str = r#"{
   "name": "Bob's Cashu mint",
   "pubkey": "0283bf290884eed3a7ca2663fc0260de2e2064d6b355ea13f98dec004b7a7ead99",
@@ -457,7 +457,7 @@ mod tests {
     }
   }
 }"#;
-        let mint_info: MintInfo<TestMethod, TestUnit> =
+        let mint_info: NodeInfo<TestMethod, TestUnit> =
             serde_json::from_str(mint_info_str).unwrap();
 
         assert_eq!(info, mint_info);
