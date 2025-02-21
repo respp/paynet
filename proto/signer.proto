@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package cashu_signer;
+package signer;
 
-import "core.proto";
+import "bdhke.proto";
 
 service Signer {
   rpc DeclareKeyset (DeclareKeysetRequest) returns (DeclareKeysetResponse);
@@ -23,7 +23,7 @@ message DeclareKeysetResponse {
 }
 
 message SignBlindedMessagesRequest {
-  repeated cashu_core.BlindedMessage messages = 1;
+  repeated bdhke.BlindedMessage messages = 1;
 }
 
 message SignBlindedMessagesResponse {
@@ -31,7 +31,7 @@ message SignBlindedMessagesResponse {
 }
 
 message VerifyProofsRequest {
-  repeated cashu_core.Proof proofs = 1;
+  repeated bdhke.Proof proofs = 1;
 }
 
 message VerifyProofsResponse {

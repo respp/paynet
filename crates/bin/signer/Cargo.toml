@@ -1,5 +1,5 @@
 [package]
-name = "cashu-signer"
+name = "signer"
 version = "0.1.0"
 edition = "2024"
 
@@ -16,7 +16,7 @@ dotenvy = { workspace = true }
 anyhow = { workspace = true }
 
 
-cashu-starknet = { workspace = true }
+starknet-types = { workspace = true }
 
 [features]
 client = []

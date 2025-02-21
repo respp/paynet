@@ -1,5 +1,5 @@
 [package]
-name = "cashu-starknet-node"
+name = "node"
 version = "0.1.0"
 edition = "2024"
 
@@ -27,10 +27,10 @@ tonic = { workspace = true }
 prost = { workspace = true }
 
 nuts = { workspace = true }
-cashu-starknet = { workspace = true }
-cashu-signer = { workspace = true }
-invoice-payment-indexer = { workspace = true }
-memory-db = { workspace = true }
+starknet-types = { workspace = true }
+signer = { workspace = true }
+starknet-payment-indexer = { workspace = true }
+db-node = { workspace = true }
 starknet-types-core = { workspace = true }
 
 sqlx = { workspace = true, features = ["postgres", "uuid"] }

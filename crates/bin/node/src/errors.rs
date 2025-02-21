@@ -15,11 +15,11 @@ pub enum Error {
     #[error(transparent)]
     Nut02(#[from] nut02::Error),
     #[error(transparent)]
-    Database(#[from] memory_db::Error),
+    Database(#[from] db_node::Error),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
-    Starknet(#[from] cashu_starknet::Error),
+    Starknet(#[from] starknet_types::Error),
     #[error(transparent)]
     Tonic(#[from] tonic::Status),
     #[error(transparent)]
@@ -67,7 +67,7 @@ pub enum InitializationError {
     #[error(transparent)]
     Config(#[from] ConfigError),
     #[error("Failed init apibara indexer: {0}")]
-    InitIndexer(#[source] invoice_payment_indexer::Error),
+    InitIndexer(#[source] starknet_payment_indexer::Error),
     #[error("Failed bind tcp listener: {0}")]
     BindTcp(#[source] std::io::Error),
     #[error("Failed to open the SqLite db: {0}")]

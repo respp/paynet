@@ -39,8 +39,8 @@ pub enum ChainId {
 }
 
 impl ChainId {
-    pub fn new_custom(s: &str) -> Result<Self, cashu_starknet::CairoShortStringToFeltError> {
-        let short_string = cashu_starknet::felt_from_short_string(s)?;
+    pub fn new_custom(s: &str) -> Result<Self, starknet_types::CairoShortStringToFeltError> {
+        let short_string = starknet_types::felt_from_short_string(s)?;
 
         Ok(Self::Custom(short_string))
     }
@@ -53,7 +53,7 @@ impl std::fmt::Display for ChainId {
             ChainId::Sepolia => std::fmt::Display::fmt("sepolia", f),
             ChainId::Custom(felt) => {
                 let as_short_string =
-                    cashu_starknet::felt_to_short_string(*felt).map_err(|_| std::fmt::Error)?;
+                    starknet_types::felt_to_short_string(*felt).map_err(|_| std::fmt::Error)?;
                 std::fmt::Display::fmt(&as_short_string, f)
             }
         }

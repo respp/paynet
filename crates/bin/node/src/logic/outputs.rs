@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use cashu_signer::SignBlindedMessagesRequest;
-use cashu_starknet::Unit;
-use memory_db::InsertBlindSignaturesQueryBuilder;
+use signer::SignBlindedMessagesRequest;
+use starknet_types::Unit;
+use db_node::InsertBlindSignaturesQueryBuilder;
 use num_traits::CheckedAdd;
 use nuts::{
     nut00::{BlindSignature, BlindedMessage},
@@ -75,7 +75,7 @@ pub async fn check_outputs_allow_single_unit(
     }
 
     // Make sure those outputs were not already signed
-    if memory_db::is_any_blind_message_already_used(conn, blind_secrets.into_iter()).await? {
+    if db_node::is_any_blind_message_already_used(conn, blind_secrets.into_iter()).await? {
         return Err(Error::AlreadySigned);
     }
 
@@ -118,7 +118,7 @@ pub async fn check_outputs_allow_multiple_units(
     }
 
     // Make sure those outputs were not already signed
-    if memory_db::is_any_blind_message_already_used(conn, blind_secrets.into_iter()).await? {
+    if db_node::is_any_blind_message_already_used(conn, blind_secrets.into_iter()).await? {
         Err(Error::AlreadySigned)?;
     }
 
@@ -137,7 +137,7 @@ pub async fn process_outputs<'a>(
             .sign_blinded_messages(SignBlindedMessagesRequest {
                 messages: outputs
                     .iter()
-                    .map(|bm| cashu_signer::BlindedMessage {
+                    .map(|bm| signer::BlindedMessage {
                         amount: bm.amount.into(),
                         keyset_id: bm.keyset_id.to_bytes().to_vec(),
                         blinded_secret: bm.blinded_secret.to_bytes().to_vec(),

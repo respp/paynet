@@ -1,15 +1,15 @@
 use nuts::{nut04, nut05};
-pub use proto::cashu_core::{BlindSignature, BlindedMessage, Proof};
-pub use proto::cashu_node::node_client::NodeClient;
-pub use proto::cashu_node::node_server::{Node, NodeServer};
-pub use proto::cashu_node::*;
+pub use proto::bdhke::{BlindSignature, BlindedMessage, Proof};
+pub use proto::node::node_client::NodeClient;
+pub use proto::node::node_server::{Node, NodeServer};
+pub use proto::node::*;
 
 mod proto {
-    pub mod cashu_core {
-        tonic::include_proto!("cashu_core");
+    pub mod bdhke {
+        tonic::include_proto!("bdhke");
     }
-    pub mod cashu_node {
-        tonic::include_proto!("cashu_node");
+    pub mod node {
+        tonic::include_proto!("node");
     }
 }
 

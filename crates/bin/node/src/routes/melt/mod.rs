@@ -1,8 +1,8 @@
 mod errors;
 mod starknet;
-use cashu_starknet::{MeltPaymentRequest, Unit};
 use nuts::nut00::Proof;
 use nuts::nut05::MeltQuoteResponse;
+use starknet_types::{MeltPaymentRequest, Unit};
 use uuid::Uuid;
 
 use crate::{grpc_service::GrpcState, methods::Method};

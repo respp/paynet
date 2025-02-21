@@ -1,5 +1,5 @@
 use futures::TryStreamExt;
-use invoice_payment_indexer::ApibaraIndexerService;
+use starknet_payment_indexer::ApibaraIndexerService;
 use starknet_types_core::felt::Felt;
 use tracing::{debug, info};
 
@@ -12,13 +12,13 @@ pub async fn init_indexer_task(
 ) -> Result<ApibaraIndexerService, InitializationError> {
     let conn = rusqlite::Connection::open_in_memory().map_err(InitializationError::OpenSqlite)?;
 
-    let service = invoice_payment_indexer::ApibaraIndexerService::init(
-        conn,
-        apibara_token,
-        vec![(recipient_address, strk_token_address)],
-    )
-    .await
-    .map_err(InitializationError::InitIndexer)?;
+    let service =
+        starknet_payment_indexer::ApibaraIndexerService::init(conn, apibara_token, vec![(
+            recipient_address,
+            strk_token_address,
+        )])
+        .await
+        .map_err(InitializationError::InitIndexer)?;
 
     Ok(service)
 }

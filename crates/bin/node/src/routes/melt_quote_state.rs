@@ -9,7 +9,7 @@ pub enum Error {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
-    Db(#[from] memory_db::Error),
+    Db(#[from] db_node::Error),
 }
 
 impl From<Error> for Status {
@@ -31,7 +31,7 @@ impl GrpcState {
         let mut conn = self.pg_pool.acquire().await?;
 
         let melt_quote_response =
-            memory_db::melt_quote::build_response_from_db(&mut conn, quote_id).await?;
+            db_node::melt_quote::build_response_from_db(&mut conn, quote_id).await?;
 
         Ok(melt_quote_response)
     }

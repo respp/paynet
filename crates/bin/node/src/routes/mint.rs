@@ -1,7 +1,7 @@
 use nuts::{
+    Amount,
     nut00::{BlindSignature, BlindedMessage},
     nut04::MintQuoteState,
-    Amount,
 };
 use thiserror::Error;
 use tonic::Status;
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     grpc_service::GrpcState,
-    logic::{check_outputs_allow_single_unit, process_outputs, OutputsError},
+    logic::{OutputsError, check_outputs_allow_single_unit, process_outputs},
     methods::Method,
 };
 
@@ -23,12 +23,14 @@ pub enum Error {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
-    Db(#[from] memory_db::Error),
+    Db(#[from] db_node::Error),
     #[error(transparent)]
     Outputs(#[from] OutputsError),
     #[error("Invalid quote state {0} at this poin of the flow")]
     InvalidQuoteStateAtThisPoint(MintQuoteState),
-    #[error("The outputs' total amount {expected} doesn't match the one specified in the quote {received}")]
+    #[error(
+        "The outputs' total amount {expected} doesn't match the one specified in the quote {received}"
+    )]
     OutputsAmount { expected: Amount, received: Amount },
 }
 
@@ -69,10 +71,10 @@ impl GrpcState {
             Method::Starknet => {}
         }
 
-        let mut tx = memory_db::begin_db_tx(&self.pg_pool).await?;
+        let mut tx = db_node::begin_db_tx(&self.pg_pool).await?;
 
         let (expected_amount, state) =
-            memory_db::mint_quote::get_amount_and_state(&mut tx, quote).await?;
+            db_node::mint_quote::get_amount_and_state(&mut tx, quote).await?;
 
         if state != MintQuoteState::Paid {
             return Err(Error::InvalidQuoteStateAtThisPoint(state));
@@ -94,7 +96,7 @@ impl GrpcState {
         insert_blind_signatures_query_builder
             .execute(&mut tx)
             .await?;
-        memory_db::mint_quote::set_state(&mut tx, quote, MintQuoteState::Issued).await?;
+        db_node::mint_quote::set_state(&mut tx, quote, MintQuoteState::Issued).await?;
 
         tx.commit().await?;
 

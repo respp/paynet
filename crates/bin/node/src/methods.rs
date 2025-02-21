@@ -13,7 +13,7 @@ impl Serialize for Method {
         S: serde::Serializer,
     {
         match self {
-            Method::Starknet => Serialize::serialize(&cashu_starknet::Method, serializer),
+            Method::Starknet => Serialize::serialize(&starknet_types::Method, serializer),
         }
     }
 }
@@ -23,14 +23,14 @@ impl<'de> Deserialize<'de> for Method {
     where
         D: serde::Deserializer<'de>,
     {
-        <cashu_starknet::Method as Deserialize>::deserialize(deserializer).map(|_| Method::Starknet)
+        <starknet_types::Method as Deserialize>::deserialize(deserializer).map(|_| Method::Starknet)
     }
 }
 
 impl core::fmt::Display for Method {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Method::Starknet => core::fmt::Display::fmt(&cashu_starknet::Method, f),
+            Method::Starknet => core::fmt::Display::fmt(&starknet_types::Method, f),
         }
     }
 }
@@ -43,7 +43,7 @@ impl FromStr for Method {
     type Err = FromStrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if <cashu_starknet::Method as FromStr>::from_str(s).is_ok() {
+        if <starknet_types::Method as FromStr>::from_str(s).is_ok() {
             Ok(Self::Starknet)
         } else {
             Err(FromStrError)

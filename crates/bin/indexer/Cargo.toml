@@ -1,10 +1,10 @@
 [package]
-name = "cashu-starknet-invoice-indexer"
+name = "starknet-payment-indexer-bin"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-invoice-payment-indexer = { workspace = true }
+starknet-payment-indexer = { workspace = true }
 
 starknet-types-core = { workspace = true }
 

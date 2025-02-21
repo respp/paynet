@@ -1,0 +1,40 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Rust cache
+      uses: Swatinem/rust-cache@v2
+    
+    - name: Build
+      run: |
+       cargo build -p starknet-payment-indexer --all-targets --all-features
+       cargo build -p db-node --all-targets --all-features
+       cargo build -p nuts --all-targets --all-features
+       cargo build -p starknet-types --all-targets --all-features
+       cargo build -p node --all-targets --all-features
+       cargo build -p starknet-payment-indexer-bin --all-targets --all-features
+       cargo build -p signer --all-targets --all-features
+      
+    - name: Run tests
+      run: |
+       cargo test -p starknet-payment-indexer --all-targets --all-features
+       cargo test -p db-node --all-targets --all-features
+       cargo test -p nuts --all-targets --all-features
+       cargo test -p starknet-types --all-targets --all-features
+       cargo test -p node --all-targets --all-features
+       cargo test -p starknet-payment-indexer-bin --all-targets --all-features
+       cargo test -p signer --all-targets --all-features
+

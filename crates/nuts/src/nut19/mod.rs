@@ -93,6 +93,8 @@ impl<M: FromStr> FromStr for Path<M> {
         }
 
         let mut splits = s.split('/');
+        // Because uri is absolute it starts with a '/' making the first element of splis empty
+        let _ = splits.next().ok_or(PathFromStrError::InvalidUri)?;
         let version = splits.next().ok_or(PathFromStrError::InvalidUri)?;
         if version != "v1" {
             return Err(PathFromStrError::InvalidVersion(version.to_string()));

@@ -1,22 +1,22 @@
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
-use cashu_starknet::{MeltPaymentRequest, StarknetU256};
 use num_traits::CheckedAdd;
 use nuts::{
-    nut05::{MeltMethodSettings, MeltQuoteRequest, MeltQuoteResponse, MeltQuoteState},
     Amount,
+    nut05::{MeltMethodSettings, MeltQuoteRequest, MeltQuoteResponse, MeltQuoteState},
 };
 use sqlx::PgPool;
+use starknet_types::{MeltPaymentRequest, StarknetU256};
 use uuid::Uuid;
 
 use crate::{
+    Unit,
     app_state::{ArcQuoteTTLConfigState, NutsSettingsState},
     errors::{Error, MeltError, QuoteError},
     methods::Method,
     utils::unix_time,
-    Unit,
 };
 
 pub async fn melt_quote(
@@ -97,7 +97,7 @@ async fn handle_starknet_melt_quote(
     let fee_reserve = Amount::ONE;
 
     let mut conn = pool.acquire().await?;
-    memory_db::melt_quote::insert_new(
+    db_node::melt_quote::insert_new(
         &mut conn,
         quote,
         melt_quote_request.unit,

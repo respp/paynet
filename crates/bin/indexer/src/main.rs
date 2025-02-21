@@ -1,5 +1,5 @@
 use futures::TryStreamExt;
-use invoice_payment_indexer::ApibaraIndexerService;
+use starknet_payment_indexer::ApibaraIndexerService;
 use starknet_types_core::felt::Felt;
 
 const APIBARA_TOKEN_ENV_VAR: &str = "APIBARA_TOKEN";
@@ -20,11 +20,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let conn = rusqlite::Connection::open_in_memory()?;
-    let mut indexer_service = ApibaraIndexerService::init(
-        conn,
-        dna_token,
-        vec![(our_recipient_account, starknet_token_address)],
-    )
+    let mut indexer_service = ApibaraIndexerService::init(conn, dna_token, vec![(
+        our_recipient_account,
+        starknet_token_address,
+    )])
     .await?;
 
     while let Some(event) = indexer_service.try_next().await? {

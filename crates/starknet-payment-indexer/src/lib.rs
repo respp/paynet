@@ -4,10 +4,10 @@ use std::task::Poll;
 use apibara_core::node::v1alpha2::DataFinality;
 use apibara_core::starknet::v1alpha2::{Block, FieldElement, Filter, HeaderFilter};
 use apibara_sdk::{ClientBuilder, Configuration, DataMessage, Uri};
-use cashu_starknet::StarknetU256;
 use futures::StreamExt;
 use rusqlite::Connection;
 use starknet_core::types::Felt;
+use starknet_types::StarknetU256;
 use thiserror::Error;
 
 mod db;

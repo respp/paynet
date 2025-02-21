@@ -1,8 +1,8 @@
-use cashu_starknet::Unit;
 use nuts::{
     Amount,
     nut00::{BlindSignature, BlindedMessage, Proof},
 };
+use starknet_types::Unit;
 use thiserror::Error;
 use tonic::Status;
 
@@ -69,7 +69,7 @@ impl GrpcState {
         inputs: &[Proof],
         outputs: &[BlindedMessage],
     ) -> Result<Vec<BlindSignature>, Error> {
-        let mut tx = memory_db::begin_db_tx(&self.pg_pool)
+        let mut tx = db_node::begin_db_tx(&self.pg_pool)
             .await
             .map_err(Error::TxBegin)?;
 

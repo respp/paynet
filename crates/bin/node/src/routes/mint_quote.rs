@@ -1,16 +1,16 @@
 use crate::grpc_service::GrpcState;
-use cashu_starknet::{MintPaymentRequest, PayInvoiceCalldata};
 use nuts::{
-    nut04::{MintQuoteResponse, MintQuoteState},
     Amount,
+    nut04::{MintQuoteResponse, MintQuoteState},
 };
 use sqlx::PgPool;
+use starknet_types::{MintPaymentRequest, PayInvoiceCalldata};
 use starknet_types_core::felt::Felt;
 use thiserror::Error;
 use tonic::Status;
 use uuid::Uuid;
 
-use crate::{methods::Method, utils::unix_time, Unit};
+use crate::{Unit, methods::Method, utils::unix_time};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -22,7 +22,7 @@ pub enum Error {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
-    Db(#[from] memory_db::Error),
+    Db(#[from] db_node::Error),
     #[error("failed to serialize the quote request content")]
     SerQuoteRequest(serde_json::Error),
     // Mint quote specific errors
@@ -126,7 +126,7 @@ async fn new_starknet_mint_quote(
     };
 
     let mut conn = pool.acquire().await?;
-    memory_db::mint_quote::insert_new(&mut conn, quote, unit, amount, &request, expiry)
+    db_node::mint_quote::insert_new(&mut conn, quote, unit, amount, &request, expiry)
         .await
         .map_err(Error::Db)?;
 

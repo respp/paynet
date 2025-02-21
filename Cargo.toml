@@ -1,12 +1,11 @@
 [workspace]
-edition = "2024"
 resolver = "2"
 members = [
   "crates/bin/node",
   "crates/bin/indexer",
   "crates/bin/signer",
-  "crates/invoice-payment-indexer",
-  "crates/memory-db",
+  "crates/starknet-payment-indexer",
+  "crates/db-node",
   "crates/nuts",
   "crates/starknet",
 ]
@@ -57,10 +56,10 @@ prost = "0.13.5"
 
 # Local crates
 nuts = { path = "crates/nuts" }
-cashu-starknet = { path = "crates/starknet" }
-memory-db  = { path = "crates/memory-db" }
-invoice-payment-indexer = { path = "crates/invoice-payment-indexer" }
-cashu-signer = { path = "crates/bin/signer" }
+starknet-types = { path = "crates/starknet" }
+db-node  = { path = "crates/db-node" }
+starknet-payment-indexer = { path = "crates/starknet-payment-indexer" }
+signer = { path = "crates/bin/signer" }
 
 
 

@@ -1,15 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cashu_starknet::Unit;
 use nuts::nut02::KeysetId;
 use parking_lot::RwLock;
 use sqlx::PgConnection;
+use starknet_types::Unit;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Failed to load keyset with id {0} in db: {1}")]
-    UnknownKeysetId(KeysetId, #[source] memory_db::Error),
+    UnknownKeysetId(KeysetId, #[source] db_node::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -27,8 +27,8 @@ impl CachedKeysetInfo {
     }
 }
 
-impl From<memory_db::KeysetInfo<Unit>> for CachedKeysetInfo {
-    fn from(value: memory_db::KeysetInfo<Unit>) -> Self {
+impl From<db_node::KeysetInfo<Unit>> for CachedKeysetInfo {
+    fn from(value: db_node::KeysetInfo<Unit>) -> Self {
         Self {
             active: value.active(),
             unit: value.unit(),
@@ -56,7 +56,7 @@ impl KeysetCache {
         }
 
         // Load the infos from db
-        let keyset_info: CachedKeysetInfo = memory_db::get_keyset::<Unit>(conn, &keyset_id)
+        let keyset_info: CachedKeysetInfo = db_node::get_keyset::<Unit>(conn, &keyset_id)
             .await
             .map_err(|e| Error::UnknownKeysetId(keyset_id, e))?
             .into();

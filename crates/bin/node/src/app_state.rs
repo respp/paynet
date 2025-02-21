@@ -1,16 +1,16 @@
-use std::sync::{atomic::AtomicU64, Arc};
+use std::sync::{Arc, atomic::AtomicU64};
 
 use axum::extract::FromRef;
-use cashu_starknet::Unit;
-use nuts::{nut06::NutsSettings, QuoteTTLConfig};
+use nuts::{QuoteTTLConfig, nut06::NutsSettings};
 use sqlx::PgPool;
+use starknet_types::Unit;
 use tokio::sync::RwLock;
 use tonic::transport::Channel;
 
 use crate::{keyset_cache::KeysetCache, methods::Method};
 
 pub type NutsSettingsState = Arc<RwLock<NutsSettings<Method, Unit>>>;
-pub type SharedSignerClient = Arc<RwLock<cashu_signer::SignerClient<Channel>>>;
+pub type SharedSignerClient = Arc<RwLock<signer::SignerClient<Channel>>>;
 
 // the application state
 #[derive(Debug, Clone, FromRef)]
@@ -25,7 +25,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         pg_pool: PgPool,
-        signer_client: cashu_signer::SignerClient<Channel>,
+        signer_client: signer::SignerClient<Channel>,
         nuts_settings: NutsSettings<Method, Unit>,
         quote_ttl: QuoteTTLConfig,
     ) -> Self {

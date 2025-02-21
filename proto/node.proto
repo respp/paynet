@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package cashu_node;
+package node;
 
-import "core.proto";
+import "bdhke.proto";
 
 service Node {
   // Swap
@@ -43,7 +43,7 @@ enum MintQuoteState {
 message MintRequest {
   string method = 1;
   string quote = 2;
-  repeated cashu_core.BlindedMessage outputs = 3;
+  repeated bdhke.BlindedMessage outputs = 3;
 }
 
 message QuoteStateRequest {
@@ -52,14 +52,14 @@ message QuoteStateRequest {
 }
 
 message MintResponse {
-  repeated cashu_core.BlindSignature signatures = 1;
+  repeated bdhke.BlindSignature signatures = 1;
 }
 
 message MeltRequest {
   string method = 1;
   string unit = 2;
   string request = 3;
-  repeated cashu_core.Proof inputs = 4;
+  repeated bdhke.Proof inputs = 4;
 }
 
 message MeltResponse {
@@ -78,11 +78,11 @@ enum MeltState {
 }
 
 message SwapRequest {
-  repeated cashu_core.Proof inputs = 1;
-  repeated cashu_core.BlindedMessage outputs = 2;
+  repeated bdhke.Proof inputs = 1;
+  repeated bdhke.BlindedMessage outputs = 2;
 }
 
 message SwapResponse {
-  repeated cashu_core.BlindSignature signatures = 1;
+  repeated bdhke.BlindSignature signatures = 1;
 }
 

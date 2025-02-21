@@ -1,16 +1,16 @@
-use cashu_starknet::Unit;
-use cashu_starknet_node::NodeServer;
 use clap::Parser;
 use commands::read_env_variables;
 use errors::{Error, InitializationError, ServiceError};
 use futures::TryFutureExt;
 use grpc_service::GrpcState;
 use methods::Method;
+use node::NodeServer;
 use nuts::{
     Amount, QuoteTTLConfig, nut04::MintMethodSettings, nut05::MeltMethodSettings,
     nut06::NutsSettings,
 };
 use sqlx::PgPool;
+use starknet_types::Unit;
 use tokio::try_join;
 use tracing::info;
 
@@ -30,7 +30,7 @@ async fn connect_to_db_and_run_migrations(pg_url: &str) -> Result<PgPool, Initia
         .await
         .map_err(InitializationError::DbConnect)?;
 
-    memory_db::run_migrations(&pool)
+    db_node::run_migrations(&pool)
         .await
         .map_err(InitializationError::DbMigrate)?;
 
@@ -74,20 +74,15 @@ async fn main() -> Result<(), Error> {
     };
 
     // Connect to the signer service
-    let signer_client = cashu_signer::SignerClient::connect(config.signer_url)
+    let signer_client = signer::SignerClient::connect(config.signer_url)
         .await
         .map_err(InitializationError::SignerConnection)?;
 
     // Launch tonic server task
-    let grpc_service = GrpcState::new(
-        pg_pool,
-        signer_client,
-        nuts_settings,
-        QuoteTTLConfig {
-            mint_ttl: 3600,
-            melt_ttl: 3600,
-        },
-    );
+    let grpc_service = GrpcState::new(pg_pool, signer_client, nuts_settings, QuoteTTLConfig {
+        mint_ttl: 3600,
+        melt_ttl: 3600,
+    });
     let addr = format!("[::1]:{}", config.grpc_server_port)
         .parse()
         .unwrap();

@@ -1,21 +1,21 @@
 use std::{str::FromStr, sync::Arc};
 
-use cashu_starknet::{MeltPaymentRequest, Unit};
-use cashu_starknet_node::{
+use node::{
     BlindSignature, MeltRequest, MeltResponse, MintQuoteRequest, MintQuoteResponse, MintRequest,
     MintResponse, Node, QuoteStateRequest, SwapRequest, SwapResponse,
 };
 use nuts::{
-    nut00::{secret::Secret, BlindedMessage, Proof},
+    Amount, QuoteTTLConfig,
+    nut00::{BlindedMessage, Proof, secret::Secret},
     nut01::{self, PublicKey},
     nut02::{self, KeysetId},
     nut06::NutsSettings,
-    Amount, QuoteTTLConfig,
 };
 use sqlx::PgPool;
+use starknet_types::{MeltPaymentRequest, Unit};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tonic::{transport::Channel, Request, Response, Status};
+use tonic::{Request, Response, Status, transport::Channel};
 use uuid::Uuid;
 
 use crate::{
@@ -37,7 +37,7 @@ pub struct GrpcState {
 impl GrpcState {
     pub fn new(
         pg_pool: PgPool,
-        signer_client: cashu_signer::SignerClient<Channel>,
+        signer_client: signer::SignerClient<Channel>,
         nuts_settings: NutsSettings<Method, Unit>,
         quote_ttl: QuoteTTLConfig,
     ) -> Self {
@@ -58,7 +58,7 @@ enum ParseGrpcError {
     #[error(transparent)]
     PublicKey(nut01::Error),
     #[error(transparent)]
-    Unit(cashu_starknet::UnitFromStrError),
+    Unit(starknet_types::UnitFromStrError),
     #[error(transparent)]
     Method(crate::methods::FromStrError),
     #[error(transparent)]
@@ -139,7 +139,7 @@ impl Node for GrpcState {
         Ok(Response::new(MintQuoteResponse {
             quote: response.quote.to_string(),
             request: response.request,
-            state: cashu_starknet_node::MintQuoteState::from(response.state).into(),
+            state: node::MintQuoteState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }
@@ -213,7 +213,7 @@ impl Node for GrpcState {
             quote: response.quote.to_string(),
             amount: response.amount.into(),
             fee: response.fee.into(),
-            state: cashu_starknet_node::MeltState::from(response.state).into(),
+            state: node::MeltState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }
@@ -233,7 +233,7 @@ impl Node for GrpcState {
         Ok(Response::new(MintQuoteResponse {
             quote: response.quote.to_string(),
             request: response.request,
-            state: cashu_starknet_node::MintQuoteState::from(response.state).into(),
+            state: node::MintQuoteState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }
@@ -254,7 +254,7 @@ impl Node for GrpcState {
             quote: response.quote.to_string(),
             amount: response.amount.into(),
             fee: response.fee.into(),
-            state: cashu_starknet_node::MeltState::from(response.state).into(),
+            state: node::MeltState::from(response.state).into(),
             expiry: response.expiry,
         }))
     }

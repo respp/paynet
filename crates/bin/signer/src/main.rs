@@ -1,22 +1,22 @@
 use bitcoin::bip32::Xpriv;
-use cashu_signer::{
-    DeclareKeysetRequest, DeclareKeysetResponse, Method, SignBlindedMessagesRequest,
-    SignBlindedMessagesResponse, SignerServer, VerifyProofsRequest, VerifyProofsResponse,
-};
 use nuts::{
+    Amount,
     dhke::{sign_message, verify_message},
     nut01::PublicKey,
     nut02::{KeysetId, MintKeySet},
-    Amount,
 };
 use server_errors::Error;
+use signer::{
+    DeclareKeysetRequest, DeclareKeysetResponse, Method, SignBlindedMessagesRequest,
+    SignBlindedMessagesResponse, SignerServer, VerifyProofsRequest, VerifyProofsResponse,
+};
 use state::{SharedKeySetCache, SharedRootKey};
 use std::{
     collections::HashMap,
     str::FromStr,
     sync::{Arc, RwLock},
 };
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{Request, Response, Status, transport::Server};
 
 mod server_errors;
 mod state;
@@ -31,7 +31,7 @@ pub struct SignerState {
 }
 
 #[tonic::async_trait]
-impl cashu_signer::Signer for SignerState {
+impl signer::Signer for SignerState {
     async fn declare_keyset(
         &self,
         declare_keyset_request: Request<DeclareKeysetRequest>,
@@ -43,7 +43,7 @@ impl cashu_signer::Signer for SignerState {
                 Error::UnknownMethod(&declare_keyset_request.method).to_string(),
             )
         })?;
-        let unit = cashu_starknet::Unit::from_str(&declare_keyset_request.unit).map_err(|_| {
+        let unit = starknet_types::Unit::from_str(&declare_keyset_request.unit).map_err(|_| {
             Status::invalid_argument(Error::UnknownUnit(&declare_keyset_request.unit).to_string())
         })?;
 
@@ -185,9 +185,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
 fn create_new_starknet_keyset(
     root_key: SharedRootKey,
-    unit: cashu_starknet::Unit,
+    unit: starknet_types::Unit,
     index: u32,
     max_order: u8,
-) -> MintKeySet<cashu_starknet::Unit> {
+) -> MintKeySet<starknet_types::Unit> {
     root_key.generate_keyset(unit, index, max_order)
 }

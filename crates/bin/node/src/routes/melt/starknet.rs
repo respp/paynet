@@ -1,10 +1,10 @@
-use cashu_starknet::{MeltPaymentRequest, Unit};
 use nuts::{
+    Amount,
     nut00::Proof,
     nut05::{MeltMethodSettings, MeltQuoteResponse, MeltQuoteState},
-    Amount,
 };
 use sqlx::{PgConnection, PgPool};
+use starknet_types::{MeltPaymentRequest, Unit};
 use uuid::Uuid;
 
 use crate::{
@@ -30,7 +30,7 @@ pub async fn validate_and_register_quote(
         ));
     }
 
-    let mut tx = memory_db::start_db_tx_from_conn(conn)
+    let mut tx = db_node::start_db_tx_from_conn(conn)
         .await
         .map_err(Error::TxBegin)?;
 
@@ -53,7 +53,7 @@ pub async fn validate_and_register_quote(
     // Arbitrary for now, but will be enough to pay tx fee on starknet
     let fee = Amount::ONE;
 
-    memory_db::melt_quote::insert_new(
+    db_node::melt_quote::insert_new(
         &mut tx,
         quote,
         settings.unit,
@@ -77,19 +77,19 @@ pub async fn validate_and_register_quote(
 //     quote_id: Uuid,
 //     inputs: &[Proof],
 // ) -> Result<(), Error> {
-//     let mut tx = memory_db::start_db_tx_from_conn(conn)
+//     let mut tx = db_node::start_db_tx_from_conn(conn)
 //         .await
 //         .map_err(Error::TxBegin)?;
 
 //     // let (quote_unit, expected_amount, fee_reserve, mut state, expiry) =
-//     //     memory_db::melt_quote::get_data::<Unit>(&mut tx, quote_id).await?;
+//     //     db_node::melt_quote::get_data::<Unit>(&mut tx, quote_id).await?;
 
 //     let (total_amount, insert_spent_proofs_query_builder) =
 //         process_melt_inputs(&mut tx, signer, keyset_cache, &inputs).await?;
 
 //     // All verifications done, melt the tokens, and update state
 //     insert_spent_proofs_query_builder.execute(&mut tx).await?;
-//     memory_db::melt_quote::set_state(&mut tx, quote_id, MeltQuoteState::Pending).await?;
+//     db_node::melt_quote::set_state(&mut tx, quote_id, MeltQuoteState::Pending).await?;
 //     tx.commit().await?;
 
 //     Ok(())
@@ -129,7 +129,7 @@ pub async fn starknet_melt(
 }
 
 #[cfg(feature = "uncollateralized")]
-async fn proceed_to_payment() -> Result<(), Error> {
+async fn proceed_to_payment(_conn: &mut PgConnection, _quote_id: Uuid) -> Result<(), Error> {
     Ok(())
 }
 
@@ -137,6 +137,6 @@ async fn proceed_to_payment() -> Result<(), Error> {
 async fn proceed_to_payment(conn: &mut PgConnection, quote_id: Uuid) -> Result<(), Error> {
     // TODO: actually proceed to payment
 
-    memory_db::melt_quote::set_state(conn, quote_id, MeltQuoteState::Pending).await?;
+    db_node::melt_quote::set_state(conn, quote_id, MeltQuoteState::Pending).await?;
     Ok(())
 }

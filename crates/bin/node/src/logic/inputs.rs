@@ -1,12 +1,12 @@
-use cashu_starknet::Unit;
+use starknet_types::Unit;
 use futures::TryFutureExt;
 use num_traits::CheckedAdd;
 use std::collections::HashSet;
 use thiserror::Error;
 use tonic::Status;
 
-use cashu_signer::VerifyProofsRequest;
-use memory_db::InsertSpentProofsQueryBuilder;
+use signer::VerifyProofsRequest;
+use db_node::InsertSpentProofsQueryBuilder;
 use nuts::{Amount, nut00::Proof, nut01::PublicKey};
 use sqlx::PgConnection;
 
@@ -101,7 +101,7 @@ pub async fn process_melt_inputs<'a>(
         query_builder.add_row(&y, proof);
 
         // Prepare payload for verification
-        verify_proofs_request.push(cashu_signer::Proof {
+        verify_proofs_request.push(signer::Proof {
             amount: proof.amount.into(),
             keyset_id: proof.keyset_id.to_bytes().to_vec(),
             secret: proof.secret.to_string(),
@@ -150,7 +150,7 @@ pub async fn process_swap_inputs<'a>(
         query_builder.add_row(&y, proof);
 
         // Prepare payload for verification
-        verify_proofs_request.push(cashu_signer::Proof {
+        verify_proofs_request.push(signer::Proof {
             keyset_id: proof.keyset_id.to_bytes().to_vec(),
             amount: proof.amount.into(),
             secret: proof.secret.to_string(),
@@ -167,7 +167,7 @@ async fn run_verification_queries(
     conn: &mut PgConnection,
     secrets: HashSet<PublicKey>,
     signer: SharedSignerClient,
-    verify_proofs_request: Vec<cashu_signer::Proof>,
+    verify_proofs_request: Vec<signer::Proof>,
 ) -> Result<(), Error> {
     let query_signer_future = async {
         let mut lock = signer.write().await;
@@ -184,7 +184,7 @@ async fn run_verification_queries(
             .map_ok(|r| r.get_ref().is_valid)
             .map_err(Error::Signer),
         // Make sure those inputs were not already used
-        memory_db::is_any_proof_already_used(conn, secrets.into_iter()).map_err(Error::Db),
+        db_node::is_any_proof_already_used(conn, secrets.into_iter()).map_err(Error::Db),
     );
 
     match res {

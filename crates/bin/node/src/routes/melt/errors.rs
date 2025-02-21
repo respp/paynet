@@ -1,5 +1,5 @@
-use cashu_starknet::{Asset, Unit};
 use nuts::Amount;
+use starknet_types::{Asset, Unit};
 use tonic::Status;
 
 use crate::{logic::InputsError, methods::Method};
@@ -13,7 +13,7 @@ pub enum Error {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
     #[error(transparent)]
-    Db(#[from] memory_db::Error),
+    Db(#[from] db_node::Error),
     #[error("failed to serialize the request content")]
     MeltDisabled,
     #[error("Unsupported unit `{0}` for method `{1}`")]

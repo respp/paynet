@@ -16,7 +16,7 @@ pub trait IInvoicePayment<TContractState> {
 /// Simple contract for managing balance.
 #[starknet::contract]
 pub mod InvoicePayment {
-    use starknet::event::EventEmitter;
+    use starknet_types::event::EventEmitter;
     use core::starknet::{get_caller_address, ContractAddress};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 

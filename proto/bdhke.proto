@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package cashu_core;
+package bdhke;
 
 message BlindedMessage {
   uint64 amount = 1;

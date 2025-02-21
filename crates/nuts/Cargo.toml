@@ -23,6 +23,7 @@ starknet-types-core = { workspace = true, optional = true }
 rand = { workspace = true }
 
 [features]
+default = []
 starknet = ["dep:starknet-types-core"]
 sqlx = ["dep:sqlx"]
 nut19 = []
