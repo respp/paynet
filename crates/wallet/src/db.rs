@@ -46,3 +46,14 @@ pub fn store_mint_quote(
 
     Ok(())
 }
+pub fn set_mint_quote_state(conn: &mut Connection, quote_id: String, state: i32) -> Result<()> {
+    const INSERT_NEW_MINT_QUOTE: &str = r#"
+        UPDATE mint_quote_state
+        SET state = $2
+        WHERE id = $1
+    "#;
+
+    conn.execute(INSERT_NEW_MINT_QUOTE, (&quote_id, state))?;
+
+    Ok(())
+}

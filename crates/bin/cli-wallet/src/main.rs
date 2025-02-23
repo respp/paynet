@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use node::NodeClient;
+use node::{MintQuoteState, NodeClient};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueHint};
@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
         }))
         .ok_or(anyhow!("couldn't find `data_dir` on this computer"))?;
     println!("database: {:?}", db_path);
+    const STARKNET_METHOD: &str = "staknet";
 
     let mut db_conn = rusqlite::Connection::open(db_path)?;
     wallet::create_tables(&mut db_conn)?;
@@ -75,13 +76,40 @@ async fn main() -> Result<()> {
             let mint_quote_response = wallet::create_mint_quote(
                 &mut db_conn,
                 &mut node_client,
-                "starknet".to_string(),
+                STARKNET_METHOD.to_string(),
                 amount,
                 unit,
             )
             .await?;
 
-            println!("received quote:\n{:#?}", mint_quote_response);
+            println!(
+                "MintQuote created with id: {}\nProceed to payment:\n{:?}",
+                &mint_quote_response.quote, &mint_quote_response.request
+            );
+
+            loop {
+                let state = wallet::get_mint_quote_state(
+                    &mut db_conn,
+                    &mut node_client,
+                    STARKNET_METHOD.to_string(),
+                    mint_quote_response.quote.clone(),
+                )
+                .await?;
+
+                if state == MintQuoteState::MnqsPaid {
+                    break;
+                }
+            }
+
+            let outputs = todo!();
+
+            wallet::mint(
+                &mut node_client,
+                STARKNET_METHOD.to_string(),
+                mint_quote_response.quote,
+                outputs,
+            )
+            .await?;
         }
         Commands::Melt { amount, from } => {
             println!("Melting {} tokens from {}", amount, from);

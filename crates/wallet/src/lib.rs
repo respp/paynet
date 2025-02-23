@@ -1,8 +1,8 @@
 mod db;
 use anyhow::Result;
 use node::{
-    MeltRequest, MeltResponse, MintQuoteRequest, MintQuoteResponse, MintRequest, SwapRequest,
-    SwapResponse,
+    MeltRequest, MeltResponse, MintQuoteRequest, MintQuoteResponse, MintQuoteState, MintRequest,
+    QuoteStateRequest, SwapRequest, SwapResponse,
 };
 use node::{MintResponse, NodeClient};
 use nuts::nut00::{BlindedMessage, Proof};
@@ -54,6 +54,25 @@ pub async fn create_mint_quote(
     db::store_mint_quote(db_conn, method, amount, unit, &response)?;
 
     Ok(response)
+}
+
+pub async fn get_mint_quote_state(
+    db_conn: &mut Connection,
+    node_client: &mut NodeClient<Channel>,
+    method: String,
+    quote_id: String,
+) -> Result<MintQuoteState> {
+    let response = node_client
+        .mint_quote_state(QuoteStateRequest {
+            method,
+            quote: quote_id,
+        })
+        .await?
+        .into_inner();
+
+    db::set_mint_quote_state(db_conn, response.quote, response.state)?;
+
+    Ok(MintQuoteState::try_from(response.state)?)
 }
 
 pub async fn mint(

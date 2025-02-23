@@ -1,9 +1,9 @@
 use nuts::{
+    Amount,
     nut04::{MintQuoteResponse, MintQuoteState},
     traits::Unit,
-    Amount,
 };
-use sqlx::{types::time::OffsetDateTime, PgConnection};
+use sqlx::{PgConnection, types::time::OffsetDateTime};
 use uuid::Uuid;
 
 use crate::Error;
@@ -89,7 +89,7 @@ pub async fn set_state(
         quote_id,
         state as MintQuoteState
     )
-    .fetch_one(conn)
+    .execute(conn)
     .await?;
 
     Ok(())

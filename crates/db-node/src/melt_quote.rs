@@ -1,9 +1,9 @@
 use nuts::{
+    Amount,
     nut05::{MeltQuoteResponse, MeltQuoteState},
     traits::Unit,
-    Amount,
 };
-use sqlx::{types::time::OffsetDateTime, PgConnection};
+use sqlx::{PgConnection, types::time::OffsetDateTime};
 use uuid::Uuid;
 
 use crate::Error;
@@ -112,7 +112,7 @@ pub async fn set_state(
         quote_id,
         state as MeltQuoteState,
     )
-    .fetch_one(conn)
+    .execute(conn)
     .await?;
 
     Ok(())

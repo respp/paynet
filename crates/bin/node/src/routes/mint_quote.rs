@@ -130,10 +130,25 @@ async fn new_starknet_mint_quote(
         .await
         .map_err(Error::Db)?;
 
+    let state = {
+        #[cfg(feature = "uncollateralized")]
+        {
+            use futures::TryFutureExt;
+
+            let new_state = MintQuoteState::Paid;
+            db_node::mint_quote::set_state(&mut conn, quote, new_state)
+                .map_err(Error::Sqlx)
+                .await?;
+            new_state
+        }
+        #[cfg(not(feature = "uncollateralized"))]
+        MintQuoteState::Unpaid
+    };
+
     Ok(MintQuoteResponse {
         quote,
         request,
-        state: MintQuoteState::Unpaid,
+        state,
         expiry,
     })
 }

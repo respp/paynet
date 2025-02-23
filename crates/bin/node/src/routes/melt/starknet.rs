@@ -117,26 +117,37 @@ pub async fn starknet_melt(
     )
     .await?;
 
-    proceed_to_payment(&mut conn, quote_id).await?;
+    let state = proceed_to_payment(&mut conn, quote_id).await?;
 
     Ok(MeltQuoteResponse {
         quote: quote_id,
         amount: total_amount,
         fee,
-        state: MeltQuoteState::Pending,
+        state,
         expiry,
     })
 }
 
 #[cfg(feature = "uncollateralized")]
-async fn proceed_to_payment(_conn: &mut PgConnection, _quote_id: Uuid) -> Result<(), Error> {
-    Ok(())
+async fn proceed_to_payment(
+    conn: &mut PgConnection,
+    quote_id: Uuid,
+) -> Result<MeltQuoteState, Error> {
+    let new_state = MeltQuoteState::Paid;
+
+    db_node::melt_quote::set_state(conn, quote_id, new_state).await?;
+    Ok(new_state)
 }
 
 #[cfg(not(feature = "uncollateralized"))]
-async fn proceed_to_payment(conn: &mut PgConnection, quote_id: Uuid) -> Result<(), Error> {
+async fn proceed_to_payment(
+    conn: &mut PgConnection,
+    quote_id: Uuid,
+) -> Result<MeltQuoteState, Error> {
     // TODO: actually proceed to payment
 
-    db_node::melt_quote::set_state(conn, quote_id, MeltQuoteState::Pending).await?;
-    Ok(())
+    let new_state = MeltQuoteState::Pending;
+
+    db_node::melt_quote::set_state(conn, quote_id, new_state).await?;
+    Ok(new_state)
 }
