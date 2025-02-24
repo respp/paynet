@@ -95,6 +95,9 @@ pub enum Message {
 
 #[derive(Debug, Clone)]
 pub struct PaymentEvent {
+    pub block_id: String,
+    pub tx_hash: Felt,
+    pub event_idx: u64,
     pub asset: Felt,
     pub invoice_id: u128,
     pub amount: StarknetU256,
@@ -130,14 +133,34 @@ impl futures::Stream for ApibaraIndexerService {
                             db::insert_new_block(&tx, &block_infos)?;
 
                             for event in block.events.iter() {
+                                let tx_hash = event
+                                    .transaction
+                                    .as_ref()
+                                    .unwrap()
+                                    .meta
+                                    .as_ref()
+                                    .unwrap()
+                                    .hash
+                                    .as_ref()
+                                    .unwrap()
+                                    .to_string();
+
                                 let payment_event = match event.event.as_ref().unwrap().try_into() {
                                     Ok(pe) => pe,
                                     Err(e) => {
                                         return Poll::Ready(Some(Err(anyhow::Error::from(e))));
                                     }
                                 };
-                                db::insert_payment_event(&tx, &block_infos.id, &payment_event)?;
+                                db::insert_payment_event(
+                                    &tx,
+                                    &block_infos.id,
+                                    &tx_hash,
+                                    &payment_event,
+                                )?;
                                 payment_events.push(PaymentEvent {
+                                    block_id: block_infos.id.clone(),
+                                    tx_hash: Felt::from_hex_unchecked(&tx_hash),
+                                    event_idx: payment_event.index,
                                     asset: Felt::from_hex_unchecked(&payment_event.asset),
                                     invoice_id: u128::from_str_radix(
                                         &payment_event.invoice_id[2..],

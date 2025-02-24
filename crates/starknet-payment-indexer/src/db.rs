@@ -3,6 +3,7 @@ use thiserror::Error;
 
 #[derive(Debug)]
 pub struct PaymentEvent {
+    pub index: u64,
     pub payee: String,
     pub asset: String,
     pub invoice_id: String,
@@ -39,6 +40,7 @@ impl TryFrom<&apibara_core::starknet::v1alpha2::Event> for PaymentEvent {
 
     fn try_from(value: &apibara_core::starknet::v1alpha2::Event) -> Result<Self, Self::Error> {
         Ok(Self {
+            index: value.index,
             payee: value
                 .keys
                 .get(1)
@@ -87,6 +89,8 @@ pub fn create_tables(conn: &mut Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS payment_event (
             id INTEGER PRIMARY KEY,
             block_id TEXT NOT NULL REFERENCES block(id) ON DELETE CASCADE,
+            tx_hash TEXT NOT NULL,
+            event_index INTEGER NOT NULL,
             payee TEXT NOT NULL,
             asset TEXT NOT NULL,
             invoice_id TEXT NOT NULL,
@@ -114,18 +118,21 @@ pub fn insert_new_block(conn: &Connection, block: &Block) -> Result<()> {
 pub fn insert_payment_event(
     conn: &Connection,
     block_id: &str,
+    transaction_hash: &str,
     payment_event: &PaymentEvent,
 ) -> Result<()> {
     const INSERT_PAYMENT_EVENT: &str = r#"
         INSERT INTO payment_event
-            (block_id, payee, asset, invoice_id, payer, amount_low, amount_high)
+            (block_id, tx_hash, event_index, payee, asset, invoice_id, payer, amount_low, amount_high)
         VALUES
-            ($1, $2, $3, $4, $5, $6, $7)"#;
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9)"#;
 
     conn.execute(
         INSERT_PAYMENT_EVENT,
         (
-            &block_id,
+            block_id,
+            transaction_hash,
+            &payment_event.index,
             &payment_event.payee,
             &payment_event.asset,
             &payment_event.invoice_id,
