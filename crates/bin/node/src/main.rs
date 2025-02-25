@@ -83,7 +83,7 @@ async fn main() -> Result<(), Error> {
 
     // Launch tonic server task
     let grpc_service = GrpcState::new(
-        pg_pool,
+        pg_pool.clone(),
         signer_client,
         nuts_settings,
         QuoteTTLConfig {
@@ -101,7 +101,7 @@ async fn main() -> Result<(), Error> {
     let tonic_future = tonic::transport::Server::builder()
         .add_service(NodeServer::new(grpc_service))
         .serve(addr)
-        .map_err(ServiceError::TonicTransport);
+        .map_err(|e| Error::Service(ServiceError::TonicTransport(e)));
 
     // Launch indexer task
     let indexer_service = indexer::init_indexer_task(
@@ -110,7 +110,10 @@ async fn main() -> Result<(), Error> {
         config.recipient_address,
     )
     .await?;
-    let indexer_future = indexer::listen_to_indexer(indexer_service);
+
+    let mut db_conn = pg_pool.acquire().await?;
+
+    let indexer_future = indexer::listen_to_indexer(&mut db_conn, indexer_service);
 
     // Run them forever
     info!("Initialized!");

@@ -7,10 +7,10 @@ use std::str::FromStr;
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use node::{
-    GetKeysetsRequest, MeltRequest, MeltResponse, MintQuoteRequest, MintQuoteResponse,
-    MintQuoteState, MintRequest, QuoteStateRequest, SwapRequest, SwapResponse,
+    GetKeysetsRequest, MeltRequest, MeltResponse, MeltState, MintQuoteRequest, MintQuoteResponse,
+    MintQuoteState, MintRequest, MintResponse, NodeClient, QuoteStateRequest, SwapRequest,
+    SwapResponse,
 };
-use node::{MintResponse, NodeClient};
 use nuts::Amount;
 use nuts::dhke::{hash_to_curve, unblind_message};
 use nuts::nut00::secret::Secret;
@@ -98,24 +98,6 @@ pub async fn mint(
     };
 
     let resp = node_client.mint(req).await?;
-
-    Ok(resp.into_inner())
-}
-
-pub async fn create_melt(
-    node_client: &mut NodeClient<Channel>,
-    method: String,
-    unit: String,
-    request: String,
-    inputs: &[Proof],
-) -> Result<MeltResponse> {
-    let req = MeltRequest {
-        method,
-        unit,
-        request,
-        inputs: convert_inputs(inputs),
-    };
-    let resp = node_client.melt(req).await?;
 
     Ok(resp.into_inner())
 }

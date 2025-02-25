@@ -3,6 +3,7 @@ use nuts::{
     nut04::{MintQuoteResponse, MintQuoteState},
     traits::Unit,
 };
+use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, types::time::OffsetDateTime};
 use uuid::Uuid;
 
@@ -21,10 +22,12 @@ pub async fn insert_new<U: Unit>(
         .map_err(|_| Error::RuntimeToDbConversion)?;
     let expiry =
         OffsetDateTime::from_unix_timestamp(expiry).map_err(|_| Error::RuntimeToDbConversion)?;
-
+    let mut hasher = Sha256::new();
+    hasher.update(quote_id.as_bytes());
     sqlx::query!(
-        r#"INSERT INTO mint_quote (id, unit, amount, request, expiry, state) VALUES ($1, $2, $3, $4, $5, 'UNPAID')"#,
+        r#"INSERT INTO mint_quote (id, invoice_id, unit, amount, request, expiry, state) VALUES ($1, $2, $3, $4, $5, $6, 'UNPAID')"#,
         quote_id,
+        format!("{:X}", hasher.finalize()),
         &unit.to_string(),
         amount.into_i64_repr(),
         request,
@@ -93,4 +96,38 @@ pub async fn set_state(
     .await?;
 
     Ok(())
+}
+
+pub async fn get_quote_id_by_invoice_id(
+    conn: &mut PgConnection,
+    invoice_id: String,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    let record = sqlx::query!(
+        r#"
+            SELECT id from mint_quote WHERE invoice_id = $1 LIMIT 1
+        "#,
+        invoice_id
+    )
+    .fetch_optional(conn)
+    .await?;
+
+    match record {
+        Some(r) => Ok(Some(r.id)),
+        None => Ok(None),
+    }
+}
+
+pub async fn get_amount_from_invoice_id(
+    conn: &mut PgConnection,
+    invoice_id: String,
+) -> Result<u64, sqlx::Error> {
+    let amount: i64 = sqlx::query!(
+        r#"SELECT amount FROM mint_quote WHERE invoice_id = $1 LIMIT 1"#,
+        invoice_id
+    )
+    .fetch_one(conn)
+    .await?
+    .amount;
+
+    Ok(u64::from_be_bytes(amount.to_be_bytes()))
 }

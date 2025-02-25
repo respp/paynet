@@ -2,6 +2,7 @@ use num_bigint::BigUint;
 use nuts::Amount;
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
+use std::cmp::Ordering;
 use thiserror::Error;
 
 mod unit;
