@@ -1,11 +1,12 @@
 use anyhow::{Result, anyhow};
+use clap::{Parser, Subcommand, ValueHint};
 use node::{MintQuoteState, NodeClient};
 use rusqlite::Connection;
+use starknet_types_core::felt::Felt;
 use std::{path::PathBuf, time::Duration};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use clap::{Parser, Subcommand, ValueHint};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -38,6 +39,8 @@ enum Commands {
         amount: u64,
         #[arg(long, short)]
         unit: String,
+        #[arg(long, short)]
+        node_id: u32,
     },
 
     /// Send tokens
@@ -134,11 +137,65 @@ async fn main() -> Result<()> {
             )
             .await?;
             // TODO: remove mint_quote
-            println!("Token stored. Finised.");
+            println!("Token stored. Finished.");
         }
-        Commands::Melt { amount, unit } => {
+        Commands::Melt {
+            amount,
+            unit,
+            node_id,
+        } => {
+            let (mut node_client, _node_url) = connect_to_node(&mut db_conn, node_id).await?;
+
             println!("Melting {} tokens from {}", amount, unit);
             // Add melt logic here
+
+            let tokens = wallet::fetch_send_inputs_from_db(
+                &db_conn,
+                &mut node_client,
+                node_id,
+                amount,
+                &unit,
+            )
+            .await?;
+
+            let inputs = match tokens {
+                Some(proof_vector) => proof_vector,
+                None => Err(anyhow!("not enough funds"))?,
+            };
+
+            let resp = node_client
+                .melt(node::MeltRequest {
+                    method: "starknet".to_string(),
+                    unit,
+                    request: serde_json::to_string(&starknet_types::MeltPaymentRequest {
+                        recipient: Felt::from_hex_unchecked("0x123"),
+                        asset: starknet_types::Asset::Strk,
+                        amount: starknet_types::StarknetU256 {
+                            high: Felt::ZERO,
+                            low: Felt::from_hex_unchecked("0x123"),
+                        },
+                    })?,
+                    inputs: wallet::convert_inputs(&inputs),
+                })
+                .await?
+                .into_inner();
+
+            const INSERT_MELT_RESPONSE: &str = r#"
+            INSERT INTO melt_response (
+                id, amount, fee, state, expiry
+            ) VALUES (?1, ?2, ?3, ?4, ?5)
+            "#;
+
+            db_conn.execute(
+                INSERT_MELT_RESPONSE,
+                [
+                    &resp.quote,
+                    &resp.amount.to_string(),
+                    &resp.fee.to_string(),
+                    &resp.state.to_string(),
+                    &resp.expiry.to_string(),
+                ],
+            )?;
         }
         Commands::Send {
             amount,
