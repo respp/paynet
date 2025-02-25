@@ -36,6 +36,12 @@ impl SharedRootKey {
 
         MintKeySet::generate(&secp_ctx, xpriv, unit, max_order)
     }
+
+    pub fn get_pubkey(&self) -> bitcoin::secp256k1::PublicKey {
+        let secp256k1 = Secp256k1::new();
+        let private_key = &self.0.private_key;
+        private_key.public_key(&secp256k1)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
