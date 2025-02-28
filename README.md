@@ -43,3 +43,7 @@ As a consequence, we are using bitcoin's secp256k1 eliptic curve for our public-
 
 Feel free to DM me on telegram at [@tdelabro](https://t.me/tdelabro).
 
+## Contributing
+
+Helpful informations are available in [CONTRIBUTING.md](./CONTRIBUTING.md)
+
