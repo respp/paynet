@@ -8,6 +8,7 @@ members = [
   "crates/starknet",
   "crates/wallet",
   "crates/bin/cli-wallet",
+  "wallet-app/src-tauri",
   "crates/tests/signer-tests",
 ]
 default-members = [
