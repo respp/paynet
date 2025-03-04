@@ -12,19 +12,15 @@ use signer::{
     VerifyProofsResponse,
 };
 use state::{SharedKeySetCache, SharedRootKey};
-use std::{
-    collections::HashMap,
-    str::FromStr,
-    sync::{Arc, RwLock},
-};
-use tonic::{Request, Response, Status, transport::Server};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+use tokio::sync::RwLock;
+use tonic::{Request, Response, Status};
 
 mod server_errors;
 mod state;
 
 const ROOT_KEY_ENV_VAR: &str = "ROOT_KEY";
 const SOCKET_PORT_ENV_VAR: &str = "SOCKET_PORT";
-const SOCKET_IP_ENV_VAR: &str = "SOCKET_IP";
 
 #[derive(Debug)]
 pub struct SignerState {
@@ -57,7 +53,7 @@ impl signer::Signer for SignerState {
 
             self.keyset_cache
                 .insert(keyset.id, keyset.keys.clone())
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .await;
 
             keyset
         };
@@ -74,6 +70,7 @@ impl signer::Signer for SignerState {
                 .collect(),
         }))
     }
+
     async fn sign_blinded_messages(
         &self,
         sign_blinded_messages_request: Request<SignBlindedMessagesRequest>,
@@ -82,11 +79,7 @@ impl signer::Signer for SignerState {
 
         let mut signatures = Vec::with_capacity(blinded_messages.len());
 
-        let keyset_cache_read_lock = self
-            .keyset_cache
-            .0
-            .read()
-            .map_err(|_| Status::internal(Error::LockPoisoned))?;
+        let keyset_cache_read_lock = self.keyset_cache.0.read().await;
 
         for blinded_message in blinded_messages {
             let keyset_id = KeysetId::from_bytes(&blinded_message.keyset_id)
@@ -124,11 +117,7 @@ impl signer::Signer for SignerState {
             let amount = Amount::from(proof.amount);
 
             let secret_key = {
-                let keyset_cache_read_lock = self
-                    .keyset_cache
-                    .0
-                    .read()
-                    .map_err(|_| Status::internal(Error::LockPoisoned))?;
+                let keyset_cache_read_lock = self.keyset_cache.0.read().await;
 
                 let keyset = keyset_cache_read_lock
                     .get(&keyset_id)
@@ -141,7 +130,7 @@ impl signer::Signer for SignerState {
             };
 
             let c = PublicKey::from_slice(&proof.unblind_signature)
-                .map_err(|_| Status::invalid_argument(Error::BadC))?;
+                .map_err(|_| Status::invalid_argument(Error::BadSignature))?;
 
             if !verify_message(&secret_key, c, proof.secret.as_bytes())
                 .map_err(|e| Status::internal(Error::Dhke(e)))?
@@ -168,14 +157,15 @@ impl signer::Signer for SignerState {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     #[cfg(debug_assertions)]
-    dotenvy::from_filename("signer.env")?;
+    {
+        let _ = dotenvy::from_filename("signer.env")
+            .inspect_err(|e| println!("dotenvy initialization failed: {e}"));
+    }
 
     let socket_addr = {
-        let socket_ip_env_var: String =
-            std::env::var(SOCKET_IP_ENV_VAR).expect("env var `SOCKET_IP` should be set");
         let socket_port_env_var: String =
             std::env::var(SOCKET_PORT_ENV_VAR).expect("env var `SOCKET_PORT` should be set");
-        format!("{}:{}", socket_ip_env_var, socket_port_env_var).parse()?
+        format!("[::0]:{}", socket_port_env_var).parse()?
     };
     let root_private_key = {
         let root_key_env_var: String =
@@ -191,10 +181,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let svc = SignerServer::new(signer_logic);
 
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<SignerServer<SignerState>>()
+        .await;
+
     println!("listening to new request on {}", socket_addr);
 
-    Server::builder()
+    tonic::transport::Server::builder()
         .add_service(svc)
+        .add_service(health_service)
         .serve(socket_addr)
         .await?;
 
