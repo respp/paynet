@@ -1,39 +1,77 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
-    <script type="module" src="/main.js" defer></script>
-  </head>
 
-  <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tauri App</title>
+  <script type="module" src="/main.js" defer></script>
+  <script type="module" src="/tauri-ext.js" defer></script>
+  <script src="/htmx.js" defer></script>
+</head>
 
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
-      </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+<body hx-ext="tauri">
+  <!-- <div class="row"> -->
+  <!-- <input id="greet-input" name="name" placeholder="Enter a name..." /> -->
+  <!-- <button tauri-invoke="greet" hx-include="[name='name']" hx-trigger="click" hx-target="#greet-msg" -->
+  <!-- hx-swap="innerHTML">Greet</button> -->
+  <!-- </div> -->
+  <!-- <p id="greet-msg"></p> -->
+  <form tauri-invoke="greet" hx-swap="innerHTML" hx-target="#my-div">
+    <input type="text" name="name" placeholder="Enter a name..." />
+    <button type="greet"></button>
+  </form>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
-    </main>
-  </body>
+  <div id="my-div"></div>
+</body>
+
+<!-- <body class="min-h-screen bg-base-200 flex items-center justify-center"> -->
+<!-- <div class="card w-96 bg-base-100 shadow-xl"> -->
+<!-- <div class="card-body"> -->
+<!-- <h1 class="card-title text-2xl text-center mb-4">Welcome on Paynet</h1> -->
+
+<!-- <p class="text-center mb-4">Pick a chain you like to use</p> -->
+
+<!-- <div class="form-control"> -->
+<!-- <select class="select select-primary w-full" name="blockchain" hx-get="/blockchain-details" -->
+<!-- hx-target="#blockchain-info"> -->
+<!-- <option disabled selected>Select a Blockchain</option> -->
+<!-- <option value="ethereum" data-logo="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=029">Ethereum -->
+<!-- </option> -->
+<!-- <option value="starknet" data-logo="https://cryptologos.cc/logos/starknet-strk-logo.svg?v=029">Starknet -->
+<!-- </option> -->
+<!-- <option value="celo" data-logo="https://cryptologos.cc/logos/celo-celo-logo.svg?v=029">Celo</option> -->
+<!-- <option value="base" data-logo="https://cryptologos.cc/logos/base-base-logo.svg?v=029">Base</option> -->
+<!-- </select> -->
+<!-- </div> -->
+
+<!-- <div id="blockchain-info" class="mt-4 text-center"> -->
+<!-- Selected blockchain details will be loaded here -->
+<!-- </div> -->
+<!-- </div> -->
+<!-- </div> -->
+
+<!-- <script> -->
+<!-- // This would typically be handled server-side, but we'll simulate with client-side JS -->
+<!-- document.body.addEventListener('htmx:afterOnLoad', function (evt) { -->
+<!-- const select = document.querySelector('select[name="blockchain"]'); -->
+<!-- select.addEventListener('change', function () { -->
+<!-- const selectedOption = this.options[this.selectedIndex]; -->
+<!-- const logo = selectedOption.getAttribute('data-logo'); -->
+<!-- const name = selectedOption.text; -->
+
+<!-- const infoDiv = document.getElementById('blockchain-info'); -->
+<!-- infoDiv.innerHTML = ` -->
+<!-- <div class="flex flex-col items-center"> -->
+<!-- <img src="${logo}" alt="${name} Logo" class="w-16 h-16 mb-2"> -->
+<!-- <h3 class="font-bold">${name} Blockchain</h3> -->
+<!-- <p class="text-sm text-gray-500">Selected for your transaction</p> -->
+<!-- </div> -->
+<!-- `; -->
+<!-- }); -->
+<!-- }); -->
+<!-- </script> -->
+<!-- </body> -->
+
 </html>

@@ -1,0 +1,10 @@
+[package]
+name = "app-backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+maud = { workspace = true }
+serde = { workspace = true }
