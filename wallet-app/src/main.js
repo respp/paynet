@@ -1,4 +1,4 @@
-import Database from '@tauri-apps/plugin-sql'
+import Database from '@tauri-apps/plugin-sql';
 const { invoke } = window.__TAURI__.core;
 const { warn, debug, trace, info, error, attachConsole, attachLogger } = window.__TAURI__.log;
 

@@ -3,75 +3,50 @@
 
 <head>
   <meta charset="UTF-8" />
-  <link rel="stylesheet" href="styles.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tauri App</title>
-  <script type="module" src="/main.js" defer></script>
-  <script type="module" src="/tauri-ext.js" defer></script>
+  <script type="module" src="./main.js" defer></script>
+  <script type="module" src="./tauri-ext.js" defer></script>
   <script src="/htmx.js" defer></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body hx-ext="tauri">
-  <!-- <div class="row"> -->
-  <!-- <input id="greet-input" name="name" placeholder="Enter a name..." /> -->
-  <!-- <button tauri-invoke="greet" hx-include="[name='name']" hx-trigger="click" hx-target="#greet-msg" -->
-  <!-- hx-swap="innerHTML">Greet</button> -->
-  <!-- </div> -->
-  <!-- <p id="greet-msg"></p> -->
-  <form tauri-invoke="greet" hx-swap="innerHTML" hx-target="#my-div">
-    <input type="text" name="name" placeholder="Enter a name..." />
-    <button type="greet"></button>
-  </form>
 
-  <div id="my-div"></div>
+
+  <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+    Hover me
+  </button>
+
+
+  <button class="btn btn-primary">Button with hover</button>
+
+
+  <button class="btn btn-primary hover:bg-primary-focus hover:border-primary-focus">button</button>
+  <button class="btn btn-secondary hover:bg-secondary-focus hover:border-secondary-focus">button</button>
+  <button class="btn btn-accent hover:bg-accent-focus hover:border-accent-focus">button</button>
+
+
+
+  <div class="w-full relative max-w-sm mx-auto h-auto ">
+    <img src="https://pagedone.io/asset/uploads/1688031162.jpg" alt="image"
+      class="w-full max-w-sm mx-auto h-auto relative z-0">
+    <a href="#"
+      class=" absolute w-full h-full top-0 left-0 bg-white opacity-0 z-10 transition-opacity duration-300 hover:opacity-20 "></a>
+  </div>
+
+  <br>
+
+  <div class="card card-dash bg-base-300 w-96 hover:bg-base-200">
+    <div class="card-body">
+      <h2 class="card-title">Card Title</h2>
+      <p>A card component has a figure, a body part, and inside body there are title and actions parts</p>
+      <div class="card-actions justify-end">
+        <button class="btn btn-primary text-red-100 hover:bg-sky-700">Buy Now</button>
+      </div>
+    </div>
+  </div>
+
 </body>
-
-<!-- <body class="min-h-screen bg-base-200 flex items-center justify-center"> -->
-<!-- <div class="card w-96 bg-base-100 shadow-xl"> -->
-<!-- <div class="card-body"> -->
-<!-- <h1 class="card-title text-2xl text-center mb-4">Welcome on Paynet</h1> -->
-
-<!-- <p class="text-center mb-4">Pick a chain you like to use</p> -->
-
-<!-- <div class="form-control"> -->
-<!-- <select class="select select-primary w-full" name="blockchain" hx-get="/blockchain-details" -->
-<!-- hx-target="#blockchain-info"> -->
-<!-- <option disabled selected>Select a Blockchain</option> -->
-<!-- <option value="ethereum" data-logo="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=029">Ethereum -->
-<!-- </option> -->
-<!-- <option value="starknet" data-logo="https://cryptologos.cc/logos/starknet-strk-logo.svg?v=029">Starknet -->
-<!-- </option> -->
-<!-- <option value="celo" data-logo="https://cryptologos.cc/logos/celo-celo-logo.svg?v=029">Celo</option> -->
-<!-- <option value="base" data-logo="https://cryptologos.cc/logos/base-base-logo.svg?v=029">Base</option> -->
-<!-- </select> -->
-<!-- </div> -->
-
-<!-- <div id="blockchain-info" class="mt-4 text-center"> -->
-<!-- Selected blockchain details will be loaded here -->
-<!-- </div> -->
-<!-- </div> -->
-<!-- </div> -->
-
-<!-- <script> -->
-<!-- // This would typically be handled server-side, but we'll simulate with client-side JS -->
-<!-- document.body.addEventListener('htmx:afterOnLoad', function (evt) { -->
-<!-- const select = document.querySelector('select[name="blockchain"]'); -->
-<!-- select.addEventListener('change', function () { -->
-<!-- const selectedOption = this.options[this.selectedIndex]; -->
-<!-- const logo = selectedOption.getAttribute('data-logo'); -->
-<!-- const name = selectedOption.text; -->
-
-<!-- const infoDiv = document.getElementById('blockchain-info'); -->
-<!-- infoDiv.innerHTML = ` -->
-<!-- <div class="flex flex-col items-center"> -->
-<!-- <img src="${logo}" alt="${name} Logo" class="w-16 h-16 mb-2"> -->
-<!-- <h3 class="font-bold">${name} Blockchain</h3> -->
-<!-- <p class="text-sm text-gray-500">Selected for your transaction</p> -->
-<!-- </div> -->
-<!-- `; -->
-<!-- }); -->
-<!-- }); -->
-<!-- </script> -->
-<!-- </body> -->
 
 </html>

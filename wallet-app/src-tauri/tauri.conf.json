@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.wallet-app.app",
   "build": {
-    "frontendDist": "../src",
-    "beforeDevCommand": "pnpm run build:css",
-    "beforeBuildCommand": "pnpm run build:css"
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -35,7 +36,7 @@
   "plugins": {
     "sql": {
       "preload": [
-        "sqlite:mydatabase.db"
+        "sqlite:wallet.sqlite3"
       ]
     }
   }
