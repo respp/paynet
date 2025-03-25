@@ -79,7 +79,7 @@ impl GrpcState {
 
             insert_keysets_query_builder.add_row(keyset_id, unit, max_order, index);
             self.keyset_cache
-                .insert_info(keyset_id, CachedKeysetInfo::new(true, *unit))
+                .insert_info(keyset_id, CachedKeysetInfo::new(true, *unit, max_order))
                 .await;
 
             let keys = response
@@ -232,6 +232,24 @@ impl Node for GrpcState {
     ) -> Result<Response<SwapResponse>, Status> {
         let swap_request = swap_request.into_inner();
 
+        if swap_request.inputs.len() > 64 {
+            return Err(Status::invalid_argument(
+                "Too many inputs: maximum allowed is 64",
+            ));
+        }
+        if swap_request.outputs.len() > 64 {
+            return Err(Status::invalid_argument(
+                "Too many outputs: maximum allowed is 64",
+            ));
+        }
+
+        if swap_request.inputs.is_empty() {
+            return Err(Status::invalid_argument("Inputs cannot be empty"));
+        }
+        if swap_request.outputs.is_empty() {
+            return Err(Status::invalid_argument("Outputs cannot be empty"));
+        }
+
         let inputs = swap_request
             .inputs
             .into_iter()
@@ -301,6 +319,16 @@ impl Node for GrpcState {
     ) -> Result<Response<MintResponse>, Status> {
         let mint_request = mint_request.into_inner();
 
+        if mint_request.outputs.len() > 64 {
+            return Err(Status::invalid_argument(
+                "Too many outputs: maximum allowed is 64",
+            ));
+        }
+
+        if mint_request.outputs.is_empty() {
+            return Err(Status::invalid_argument("Outputs cannot be empty"));
+        }
+
         let method = Method::from_str(&mint_request.method).map_err(ParseGrpcError::Method)?;
         let quote_id = Uuid::from_str(&mint_request.quote).map_err(ParseGrpcError::Uuid)?;
         let outputs = mint_request
@@ -336,6 +364,16 @@ impl Node for GrpcState {
         melt_request: Request<MeltRequest>,
     ) -> Result<Response<MeltResponse>, Status> {
         let melt_request = melt_request.into_inner();
+
+        if melt_request.inputs.len() > 64 {
+            return Err(Status::invalid_argument(
+                "Too many inputs: maximum allowed is 64",
+            ));
+        }
+
+        if melt_request.inputs.is_empty() {
+            return Err(Status::invalid_argument("Inputs cannot be empty"));
+        }
 
         let method = Method::from_str(&melt_request.method).map_err(ParseGrpcError::Method)?;
         let unit = Unit::from_str(&melt_request.unit).map_err(ParseGrpcError::Unit)?;
