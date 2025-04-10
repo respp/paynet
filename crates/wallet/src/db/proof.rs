@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, Result, ToSql, params};
+use rusqlite::{Connection, OptionalExtension, Result, params};
 
 use crate::types::ProofState;
 use nuts::{Amount, nut00::secret::Secret, nut01::PublicKey, nut02::KeysetId};
@@ -9,8 +9,8 @@ pub const CREATE_TABLE_PROOF: &str = r#"
             node_id INTEGER NOT NULL REFERENCES node(id) ON DELETE CASCADE,
             keyset_id BLOB(8) REFERENCES keyset(id) ON DELETE CASCADE,
             amount INTEGER NOT NULL,
-            secret TEXT NOT NULL,
-            unblind_signature BLOB(33) NOT NULL,
+            secret TEXT UNIQUE NOT NULL,
+            unblind_signature BLOB(33) UNIQUE NOT NULL,
             state INTEGER NOT NULL CHECK (state IN (1, 2, 3, 4))
         );
 
@@ -70,17 +70,23 @@ pub fn set_proof_to_state(conn: &Connection, y: PublicKey, state: ProofState) ->
     Ok(())
 }
 
-pub fn set_proofs_to_state<'a>(
-    conn: &Connection,
-    ys: impl Iterator<Item = &'a PublicKey>,
-    state: ProofState,
-) -> Result<()> {
-    let mut stmt = conn.prepare("UPDATE proof SET state = ?2 WHERE y = ?1")?;
+pub fn set_proofs_to_state(conn: &Connection, ys: &[PublicKey], state: ProofState) -> Result<()> {
+    // Build placeholder string like "?,?,?" based on number of items
+    let mut placeholders = "?,".repeat(ys.len() - 1);
+    placeholders.push('?');
 
-    for y in ys {
-        stmt.execute(params![y, state])?;
+    // Prepare the statement with dynamic placeholders
+    let sql = format!("UPDATE proof SET state = ?1 WHERE y IN ({})", placeholders);
+    let mut stmt = conn.prepare(&sql)?;
+
+    // Bind state as first parameter
+    stmt.raw_bind_parameter(1, state)?;
+    // Bind each public key string to its respective placeholder
+    for (i, y) in ys.iter().enumerate() {
+        stmt.raw_bind_parameter(i + 2, y)?;
     }
 
+    stmt.raw_execute()?;
     Ok(())
 }
 
@@ -98,7 +104,8 @@ pub fn get_proofs_by_ids(
     }
 
     // Dynamically create the placeholders (?, ?, ...)
-    let placeholders = proof_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let mut placeholders = "?,".repeat(proof_ids.len() - 1);
+    placeholders.push('?');
     let sql = format!(
         "SELECT amount, keyset_id, unblind_signature, secret FROM proof WHERE y IN ({})",
         placeholders
@@ -107,17 +114,22 @@ pub fn get_proofs_by_ids(
     let mut stmt = conn.prepare(&sql)?;
 
     // Create a slice of references to ToSql-compatible types
-    let params_slice: Vec<&dyn ToSql> = proof_ids.iter().map(|pk| pk as &dyn ToSql).collect();
+    for (i, y) in proof_ids.iter().enumerate() {
+        stmt.raw_bind_parameter(i + 1, y)?;
+    }
 
     let proofs = stmt
-        .query_map(&params_slice[..], |r| {
-            Ok((
-                r.get::<_, Amount>(0)?,
-                r.get::<_, KeysetId>(1)?,
-                r.get::<_, PublicKey>(2)?,
-                r.get::<_, Secret>(3)?,
-            ))
-        })?
+        .raw_query()
+        .mapped(|r| -> Result<(Amount, KeysetId, PublicKey, Secret)> {
+            {
+                Ok((
+                    r.get::<_, Amount>(0)?,
+                    r.get::<_, KeysetId>(1)?,
+                    r.get::<_, PublicKey>(2)?,
+                    r.get::<_, Secret>(3)?,
+                ))
+            }
+        })
         .collect::<Result<Vec<_>>>()?;
 
     Ok(proofs)
