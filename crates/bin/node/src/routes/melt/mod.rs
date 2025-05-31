@@ -61,6 +61,7 @@ impl GrpcState {
                 quote_hash,
                 payment_request,
                 WithdrawAmount::convert_from(settings.unit, total_amount),
+                expiry,
             )
             .await
             .map_err(|e| Error::LiquiditySource(e.into()))?;

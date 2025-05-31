@@ -124,10 +124,10 @@ async fn create_new_starknet_mint_quote(
     let quote_hash = bitcoin_hashes::Sha256::hash(quote.as_bytes());
 
     let (invoice_id, request) = depositer
-        .generate_deposit_payload(quote_hash, unit, amount)
+        .generate_deposit_payload(quote_hash, unit, amount, expiry)
         .map_err(|e| Error::LiquiditySource(e.into()))?;
 
-    db_node::mint_quote::insert_new(conn, quote, &invoice_id, unit, amount, &request, expiry)
+    db_node::mint_quote::insert_new(conn, quote, invoice_id, unit, amount, &request, expiry)
         .await
         .map_err(Error::Db)?;
 

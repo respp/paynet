@@ -17,7 +17,8 @@ pub trait IInvoicePayment<TContractState> {
     /// Execute an erc20 transfer and emit the rich event 
     fn pay_invoice(
         ref self: TContractState,
-        invoice_id: felt252,
+        quote_id_hash: felt252,
+        expiry: u64,
         asset: ContractAddress,
         amount: u256,
         payee: ContractAddress,
@@ -29,6 +30,7 @@ pub trait IInvoicePayment<TContractState> {
 pub mod InvoicePayment {
     use starknet::{get_caller_address, ContractAddress};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use core::poseidon::hades_permutation;
 
     #[storage]
     struct Storage {}
@@ -57,13 +59,18 @@ pub mod InvoicePayment {
     impl InvoicePaymentImpl of super::IInvoicePayment<ContractState> {
         fn pay_invoice(
             ref self: ContractState,
-            invoice_id: felt252,
+            quote_id_hash: felt252,
+            expiry: u64,
             asset: ContractAddress,
             amount: u256,
             payee: ContractAddress,
         ) {
             let payer = get_caller_address();
             let erc20_dispatcher = IERC20Dispatcher { contract_address: asset };
+
+            assert!(expiry >= starknet::get_block_timestamp(), "Invoice expired");
+
+            let (invoice_id, _, _) = hades_permutation(quote_id_hash, expiry.into(), 2);
 
             assert!(erc20_dispatcher.transfer_from(payer, payee, amount));
 

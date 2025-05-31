@@ -10,5 +10,6 @@ pub trait DepositInterface: Send {
         quote_hash: Sha256,
         unit: Unit,
         amount: Amount,
+        expiry: u64,
     ) -> Result<([u8; 32], String), Self::Error>;
 }

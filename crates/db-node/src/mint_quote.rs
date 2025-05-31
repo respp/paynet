@@ -11,7 +11,7 @@ use crate::Error;
 pub async fn insert_new<U: Unit>(
     conn: &mut PgConnection,
     quote_id: Uuid,
-    invoice_id: &[u8; 32],
+    invoice_id: [u8; 32],
     unit: U,
     amount: Amount,
     request: &str,
@@ -25,7 +25,7 @@ pub async fn insert_new<U: Unit>(
     sqlx::query!(
         r#"INSERT INTO mint_quote (id, invoice_id, unit, amount, request, expiry, state) VALUES ($1, $2, $3, $4, $5, $6, 'UNPAID')"#,
         quote_id,
-        invoice_id,
+        &invoice_id,
         &unit.to_string(),
         amount.into_i64_repr(),
         request,
