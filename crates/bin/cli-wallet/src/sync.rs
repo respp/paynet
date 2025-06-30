@@ -5,6 +5,8 @@ use nuts::nut05::MeltQuoteState;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tonic::transport::Channel;
+use wallet::db::melt_quote::PendingMeltQuote;
+use wallet::db::mint_quote::PendingMintQuote;
 use wallet::types::NodeUrl;
 
 const STARKNET_STR: &str = "starknet";
@@ -14,63 +16,45 @@ pub async fn sync_all_pending_operations(
     _poll_interval: u64,
     _timeout: u64,
 ) -> Result<()> {
-    let nodes = {
-        let db_conn = pool.get()?;
-        wallet::db::node::fetch_all(&db_conn)?
+    let db_conn = pool.get()?;
+    let (pending_mint_quotes, pending_melt_quotes) = {
+        let mint_quotes = wallet::db::mint_quote::get_pendings(&db_conn)?;
+        let melt_quotes = wallet::db::melt_quote::get_pendings(&db_conn)?;
+        (mint_quotes, melt_quotes)
     };
 
-    if nodes.is_empty() {
-        println!("No nodes registered");
-        return Ok(());
-    }
-
-    println!("Starting sync for {} nodes", nodes.len());
-
-    // Process nodes sequentially to avoid Send trait issues with rusqlite::Connection
-    for (node_id, node_url) in nodes {
-        println!("Syncing node {} ({})", node_id, node_url);
+    for (node_id, pending_quotes) in pending_mint_quotes {
+        let node_url = wallet::db::node::get_url_by_id(&db_conn, node_id)?;
+        println!("Syncing node {} ({}) mint quotes", node_id, node_url);
 
         let (mut node_client, _) = connect_to_node(pool.clone(), node_id).await?;
+        sync_mint_quotes(&pool, &mut node_client, node_id, &pending_quotes).await?;
+    }
+    for (node_id, pending_quotes) in pending_melt_quotes {
+        let node_url = wallet::db::node::get_url_by_id(&db_conn, node_id)?;
+        println!("Syncing node {} ({}) melt quotes", node_id, node_url);
 
-        // Sync mint quotes
-        if let Err(e) = sync_mint_quotes_for_node(pool.clone(), &mut node_client, node_id).await {
-            eprintln!("Error syncing mint quotes for node {}: {}", node_id, e);
-        }
-
-        // Sync melt quotes
-        if let Err(e) = sync_melt_quotes_for_node(pool.clone(), &mut node_client, node_id).await {
-            eprintln!("Error syncing melt quotes for node {}: {}", node_id, e);
-        }
+        let (mut node_client, _) = connect_to_node(pool.clone(), node_id).await?;
+        sync_melt_quotes(&pool, &mut node_client, &pending_quotes).await?;
     }
 
     println!("Sync completed for all nodes");
     Ok(())
 }
 
-async fn sync_mint_quotes_for_node(
-    pool: Pool<SqliteConnectionManager>,
+async fn sync_mint_quotes(
+    pool: &Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,
     node_id: u32,
+    pending_mint_quotes: &[PendingMintQuote],
 ) -> Result<()> {
-    let pending_quotes = {
-        let db_conn = pool.get()?;
-        wallet::db::mint_quote::get_pendings(&db_conn)?
-    };
-
-    // Find quotes for this node
-    let pending_mint_quotes = pending_quotes
-        .into_iter()
-        .find(|(id, _)| *id == node_id)
-        .map(|(_, quotes)| quotes)
-        .unwrap_or_default();
-
     for pending_mint_quote in pending_mint_quotes {
         let new_state = {
             let db_conn = pool.get()?;
             match wallet::mint::get_quote_state(
                 &db_conn,
                 node_client,
-                pending_mint_quote.method,
+                pending_mint_quote.method.clone(),
                 pending_mint_quote.id.clone(),
             )
             .await?
@@ -114,23 +98,11 @@ async fn sync_mint_quotes_for_node(
     Ok(())
 }
 
-async fn sync_melt_quotes_for_node(
-    pool: Pool<SqliteConnectionManager>,
+async fn sync_melt_quotes(
+    pool: &Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,
-    node_id: u32,
+    pending_melt_quotes: &[PendingMeltQuote],
 ) -> Result<()> {
-    let pending_quotes = {
-        let db_conn = pool.get()?;
-        wallet::db::melt_quote::get_pendings(&db_conn)?
-    };
-
-    // Find quotes for this node
-    let pending_melt_quotes = pending_quotes
-        .into_iter()
-        .find(|(id, _)| *id == node_id)
-        .map(|(_, quotes)| quotes)
-        .unwrap_or_default();
-
     for pending_melt_quote in pending_melt_quotes {
         wallet::sync::melt_quote(
             pool.clone(),
