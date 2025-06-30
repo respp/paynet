@@ -4,7 +4,7 @@ mod migrations;
 mod parse_asset_amount;
 
 use commands::{
-    add_node, create_mint_quote, create_wads, get_nodes_balance, receive_wad, redeem_quote,
+    add_node, create_mint_quote, create_wads, get_nodes_balance, receive_wads, redeem_quote,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -13,12 +13,8 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = {
-        let builder = tauri::Builder::default().plugin(tauri_plugin_os::init());
-
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
-
-        builder
+        tauri::Builder::default()
+            .plugin(tauri_plugin_os::init())
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_log::Builder::new().build())
             .plugin(tauri_plugin_os::init())
@@ -48,7 +44,7 @@ pub fn run() {
                 create_mint_quote,
                 redeem_quote,
                 create_wads,
-                receive_wad,
+                receive_wads,
             ])
     };
 
