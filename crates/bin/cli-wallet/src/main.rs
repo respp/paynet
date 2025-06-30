@@ -49,13 +49,6 @@ enum MintCommands {
         #[arg(long)]
         node_id: u32,
     },
-
-    /// Sync
-    #[command(
-        about = "Sync ongoing mint operation",
-        long_about = "Sync ongoing mint operation. Inspect the database for pending quote and ask the node about updates. Finalize the mint if possible."
-    )]
-    Sync {},
 }
 
 #[derive(Subcommand)]
@@ -113,6 +106,7 @@ enum Commands {
         #[arg(long)]
         to: String,
     },
+
     /// Send tokens
     #[command(
         about = "Send some tokens",
@@ -323,48 +317,6 @@ async fn main() -> Result<()> {
             // TODO: remove mint_quote
             println!("Token stored. Finished.");
         }
-        Commands::Mint(MintCommands::Sync {}) => {
-            let pending_quotes = wallet::db::mint_quote::get_pendings(&db_conn)?;
-            for (node_id, pending_mint_quotes) in pending_quotes {
-                let (mut node_client, _node_url) = connect_to_node(&mut db_conn, node_id).await?;
-                for pending_mint_quote in pending_mint_quotes {
-                    let tx = db_conn.transaction()?;
-                    let new_state = match wallet::mint::get_quote_state(
-                        &tx,
-                        &mut node_client,
-                        pending_mint_quote.method,
-                        pending_mint_quote.id.clone(),
-                    )
-                    .await?
-                    {
-                        Some(new_state) => new_state,
-                        None => {
-                            println!("quote {} has expired", pending_mint_quote.id);
-                            continue;
-                        }
-                    };
-
-                    if new_state == MintQuoteState::MnqsPaid {
-                        println!(
-                            "On-chain deposit received for quote {}",
-                            pending_mint_quote.id
-                        );
-                        wallet::mint::redeem_quote(
-                            pool.clone(),
-                            &mut node_client,
-                            STARKNET_STR.to_string(),
-                            pending_mint_quote.id,
-                            node_id,
-                            pending_mint_quote.unit.as_str(),
-                            pending_mint_quote.amount,
-                        )
-                        .await?;
-                        println!("Token stored.");
-                    }
-                    tx.commit()?;
-                }
-            }
-        }
         Commands::Melt {
             amount,
             asset,
@@ -470,7 +422,6 @@ async fn main() -> Result<()> {
                     )
                     .await?
                     {
-                        println!("is_final");
                         break;
                     } else {
                         tokio::time::sleep(Duration::from_secs(1)).await;
