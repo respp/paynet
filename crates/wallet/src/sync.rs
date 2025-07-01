@@ -6,7 +6,6 @@ use tonic::transport::Channel;
 
 use crate::{db, errors::Error};
 
-// Melt quote state sync function following new pool-based architecture
 pub async fn melt_quote(
     pool: Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,

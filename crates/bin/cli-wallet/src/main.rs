@@ -146,14 +146,7 @@ enum Commands {
         about = "Sync all pending mint and melt operations",
         long_about = "Check all nodes for pending mint and melt quote updates and process them accordingly"
     )]
-    Sync {
-        /// Polling interval in seconds
-        #[arg(long, default_value = "1")]
-        poll_interval: u64,
-        /// Timeout in seconds
-        #[arg(long, default_value = "300")]
-        timeout: u64,
-    },
+    Sync,
 }
 
 #[derive(Args)]
@@ -542,11 +535,8 @@ async fn main() -> Result<()> {
             println!("\nDetailed Contents:");
             println!("{}", serde_json::to_string_pretty(&regular_wad)?);
         }
-        Commands::Sync {
-            poll_interval,
-            timeout,
-        } => {
-            sync::sync_all_pending_operations(pool, poll_interval, timeout).await?;
+        Commands::Sync {} => {
+            sync::sync_all_pending_operations(pool).await?;
         }
     }
 

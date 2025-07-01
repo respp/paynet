@@ -11,11 +11,7 @@ use wallet::types::NodeUrl;
 
 const STARKNET_STR: &str = "starknet";
 
-pub async fn sync_all_pending_operations(
-    pool: Pool<SqliteConnectionManager>,
-    _poll_interval: u64,
-    _timeout: u64,
-) -> Result<()> {
+pub async fn sync_all_pending_operations(pool: Pool<SqliteConnectionManager>) -> Result<()> {
     let db_conn = pool.get()?;
     let (pending_mint_quotes, pending_melt_quotes) = {
         let mint_quotes = wallet::db::mint_quote::get_pendings(&db_conn)?;
