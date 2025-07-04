@@ -44,9 +44,11 @@ async fn sync_mint_quotes(
     node_id: u32,
     pending_mint_quotes: &[PendingMintQuote],
 ) -> Result<()> {
+    println!("pending: {:?}", pending_mint_quotes);
     for pending_mint_quote in pending_mint_quotes {
         let new_state = {
             let db_conn = pool.get()?;
+
             match wallet::mint::get_quote_state(
                 &db_conn,
                 node_client,
@@ -55,7 +57,7 @@ async fn sync_mint_quotes(
             )
             .await?
             {
-                Some(new_state) => MintQuoteState::try_from(new_state)?,
+                Some(new_state) => new_state,
                 None => {
                     println!("Mint quote {} has expired", pending_mint_quote.id);
                     continue;
@@ -63,7 +65,7 @@ async fn sync_mint_quotes(
             }
         };
 
-        if pending_mint_quote.state == MintQuoteState::Unpaid && new_state == MintQuoteState::Paid {
+        if new_state == MintQuoteState::Paid {
             println!(
                 "On-chain deposit received for mint quote {}",
                 pending_mint_quote.id
@@ -100,7 +102,7 @@ async fn sync_melt_quotes(
     pending_melt_quotes: &[PendingMeltQuote],
 ) -> Result<()> {
     for pending_melt_quote in pending_melt_quotes {
-        wallet::sync::melt_quote(
+        sync_melt_quote(
             pool.clone(),
             node_client,
             STARKNET_STR.to_string(),

@@ -64,7 +64,7 @@ pub struct PendingMeltQuote {
 pub fn get_pendings(conn: &Connection) -> Result<Vec<(u32, Vec<PendingMeltQuote>)>> {
     const GET_PENDING_MELT_QUOTES: &str = r#"
         SELECT node_id, id, state, expiry 
-        FROM melt_response 
+        FROM melt_quote 
         WHERE state = ? OR state = ?
         ORDER BY node_id;
     "#;
@@ -92,7 +92,7 @@ pub fn get_pendings(conn: &Connection) -> Result<Vec<(u32, Vec<PendingMeltQuote>
 
 pub fn update_state(conn: &Connection, quote_id: &str, state: i32) -> Result<()> {
     const UPDATE_MELT_QUOTE_STATE: &str = r#"
-        UPDATE melt_response
+        UPDATE melt_quote
         SET state = ?2
         WHERE id = ?1;
     "#;
@@ -104,7 +104,7 @@ pub fn update_state(conn: &Connection, quote_id: &str, state: i32) -> Result<()>
 
 pub fn delete(conn: &Connection, quote_id: &str) -> Result<()> {
     const DELETE_MELT_QUOTE: &str = r#"
-        DELETE FROM melt_response
+        DELETE FROM melt_quote
         WHERE id = ?1;
     "#;
 

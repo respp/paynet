@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use clap::{Args, Parser, Subcommand, ValueHint};
-use node_client::{MeltQuoteState, MintQuoteState, NodeClient, hash_melt_request};
-use nuts::Amount;
+use node_client::{MeltQuoteState, NodeClient, hash_melt_request};
+use nuts::{Amount, nut04::MintQuoteState};
 use primitive_types::U256;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
@@ -290,7 +290,7 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                if state == MintQuoteState::MnqsPaid {
+                if state == MintQuoteState::Paid {
                     println!("On-chain deposit received");
                     break;
                 }
@@ -396,14 +396,21 @@ async fn main() -> Result<()> {
 
             println!("Melt submited!");
             if melt_response.state == MeltQuoteState::MlqsPaid as i32 {
+                let tx = db_conn.transaction()?;
+                wallet::db::melt_quote::update_state(
+                    &tx,
+                    &melt_quote_response.quote,
+                    melt_response.state,
+                )?;
                 if !melt_response.transfer_ids.is_empty() {
                     let transfer_ids_to_store = serde_json::to_string(&melt_response.transfer_ids)?;
                     wallet::db::melt_quote::register_transfer_ids(
-                        &db_conn,
+                        &tx,
                         &melt_quote_response.quote,
                         &transfer_ids_to_store,
                     )?;
                 }
+                tx.commit()?;
                 display_paid_melt_quote(melt_quote_response.quote, melt_response.transfer_ids);
             } else {
                 loop {
@@ -535,7 +542,7 @@ async fn main() -> Result<()> {
             println!("\nDetailed Contents:");
             println!("{}", serde_json::to_string_pretty(&regular_wad)?);
         }
-        Commands::Sync {} => {
+        Commands::Sync => {
             sync::sync_all_pending_operations(pool).await?;
         }
     }

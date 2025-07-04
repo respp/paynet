@@ -44,14 +44,14 @@ pub fn store(
 
     Ok(())
 }
-pub fn set_state(conn: &Connection, quote_id: String, state: i32) -> Result<()> {
+pub fn set_state(conn: &Connection, quote_id: &str, state: MintQuoteState) -> Result<()> {
     const SET_MINT_QUOTE_STATE: &str = r#"
         UPDATE mint_quote
         SET state = ?2
         WHERE id = ?1;
     "#;
 
-    conn.execute(SET_MINT_QUOTE_STATE, (&quote_id, state))?;
+    conn.execute(SET_MINT_QUOTE_STATE, (quote_id, state))?;
 
     Ok(())
 }
