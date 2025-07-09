@@ -1,8 +1,0 @@
-services:
-  signer:
-    image: ${SIGNER_IMAGE}
-  
-  node-mock:
-    image: ${NODE_MOCK_IMAGE}
-
-  
