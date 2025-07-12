@@ -11,8 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository }}
   CARGO_TERM_COLOR: always
   ROOT_KEY: tprv8ZgxMBicQKsPeb6rodrmEXb1zRucvxYJgTKDhqQkZtbz8eY4Pf2EgbsT2swBXnnbDPQChQeFrFqHN72yFxzKfFAVsHdPeRWq2xqyUT2c4wH
   SIGNER_GRPC_PORT: 10001
@@ -51,205 +49,486 @@ jobs:
           version: "28.x"
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-cache-clippy-${{ hashFiles('**/Cargo.lock') }}"
+          shared-key: rust-cache-clippy-${{ hashFiles('**/Cargo.lock') }}
           cache-on-failure: true
           cache-all-crates: true
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings --no-deps
 
-  build-images:
+  check-cache-debug:
+    name: Check debug libs cache
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        include:
-        - service: signer
-        - service: starknet-setup
-        - service: node
-          features: starknet
-          image_name: node
-        - service: node
-          features: starknet,mock,keyset-rotation
-          image_name: node-mock
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./dockerfiles/${{ matrix.service }}.Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image_name || matrix.service }}:${{ github.sha }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image_name || matrix.service }}:cache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image_name || matrix.service }}:cache,mode=max
-          build-args: |
-            CARGO_FEATURES=${{ matrix.features || '' }}
-
-  build-binary:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      cache-hit: ${{ steps.lookup-cache.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@v4
       - name: Remove unwanted files
         run: rm -f rust-toolchain.toml
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Cache Rust dependencies and targets
+        id: lookup-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          lookup-only: true
+
+      - name: Cache status
+        run: |
+          echo "Cache hit: ${{ steps.lookup-cache.outputs.cache-hit }}"
+
+  check-cache-release:
+    name: Check release libs cache
+    runs-on: ubuntu-latest
+    outputs:
+      cache-hit: ${{ steps.lookup-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove unwanted files
+        run: rm -f rust-toolchain.toml
+
+      - name: Cache Rust dependencies and targets
+        id: lookup-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          lookup-only: true
+
+      - name: Cache status
+        run: |
+          echo "Cache hit: ${{ steps.lookup-cache.outputs.cache-hit }}"
+
+  build-libs-debug:
+    name: Build debug workspace libs
+    runs-on: ubuntu-latest
+    needs: check-cache-debug
+    if: needs.check-cache-debug.outputs.cache-hit != 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove unwanted files
+        run: rm -f rust-toolchain.toml
 
       - name: Install protoc
         uses: arduino/setup-protoc@v3
         with:
           version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       
-      - uses: Swatinem/rust-cache@v2
-
       - uses: dtolnay/rust-toolchain@1.86.0
 
-      - name: Build tests
-        run: |
-          cargo test -p node-tests --no-run
-          cargo test -p signer-tests --no-run
-          cargo test -p e2e-tests --no-run
-          cargo test -p concurrency-tests --no-run
-  
-      - name: Cache test binaries for other jobs
-        uses: actions/cache/save@v3
+      - name: Cache Rust dependencies and targets
+        uses: actions/cache@v4
         with:
-          path: target
-          key: test-binaries-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          restore-keys: |
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            rust-libs-debug-${{ runner.os }}-
+            rust-libs-debug-
 
-  unit-test:
-    name: Unit-test
-    strategy:
-      matrix:
-        include:
-          - test_cmd: "cargo test -p node --no-default-features --features=starknet,mock,keyset-rotation,tls"
-            cache_key: "node-mock-keyset-tls"
-          - test_cmd: "cargo test -p node --no-default-features --features=starknet,keyset-rotation,tls"
-            cache_key: "node-starknet-keyset-tls"
-          - test_cmd: "cargo test -p signer --no-default-features"
-            cache_key: "signer-default"
-          - test_cmd: "cargo test -p cli-wallet --no-default-features"
-            cache_key: "cli-wallet-default"
-          - test_cmd: "cargo test -p cli-wallet --no-default-features --features=tls,tls-allow-self-signed"
-            cache_key: "cli-wallet-tls"
-          - test_cmd: "cargo test -p db-node --no-default-features"
-            cache_key: "db-node-default"
-          - test_cmd: "cargo test -p nuts --no-default-features"
-            cache_key: "nuts-default"
-          - test_cmd: "cargo test -p nuts --features=starknet,sqlx,nut19"
-            cache_key: "nuts-starknet-sqlx-nut19"
-          - test_cmd: "cargo test -p starknet-types --no-default-features"
-            cache_key: "starknet-types-default"
-          - test_cmd: "cargo test -p wallet --no-default-features"
-            cache_key: "wallet-default"
-          - test_cmd: "cargo test -p wallet --no-default-features --features=tls,tls-allow-self-signed"
-            cache_key: "wallet-tls"
-          - test_cmd: "cargo test -p liquidity-source --no-default-features"
-            cache_key: "liquidity-source-default"
-          - test_cmd: "cargo test -p starknet-on-chain-setup --no-default-features"
-            cache_key: "starknet-on-chain-setup-default"
-          - test_cmd: "cargo test -p starknet-payment-indexer --no-default-features"
-            cache_key: "starknet-payment-indexer-default"
-          - test_cmd: "cargo test -p starknet-liquidity-source --no-default-features"
-            cache_key: "starknet-liquidity-source-default"
-          - test_cmd: "cargo test -p starknet-liquidity-source --no-default-features --features=mock"
-            cache_key: "starknet-liquidity-source-mock"
+      - name: Build libs
+        run: cargo build --locked --lib
+
+  build-libs-release:
+    name: Build release workspace libs
     runs-on: ubuntu-latest
+    needs: check-cache-release
+    if: needs.check-cache-release.outputs.cache-hit != 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Remove unwanted files
         run: rm -f rust-toolchain.toml
 
-      - uses: dtolnay/rust-toolchain@1.86.0
-      - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
         with:
-          shared-key: "rust-cache-${{ matrix.cache_key }}-${{ hashFiles('**/Cargo.lock') }}"
-          cache-on-failure: true
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: dtolnay/rust-toolchain@1.86.0
+
+      - name: Cache Rust dependencies and targets
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          restore-keys: |
+            rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}
+            rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            rust-libs-release-${{ runner.os }}-
+            rust-libs-release-
+
+      - name: Build libs
+        run: cargo build --release --locked --lib
+
+  build-app-binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    needs: [ check-cache-release, build-libs-release ]
+    if: |
+      always() && !cancelled() &&
+      (needs.build-libs-release.result == 'success' || needs.check-cache-release.outputs.cache-hit == 'true')
+    strategy:
+      matrix:
+        include:
+          - name: "node-mock"
+            build_cmd: "cargo build --release -p node --no-default-features --features=starknet,mock,keyset-rotation --locked"
+            crate_name: node
+          - name: "node-starknet"
+            build_cmd: "cargo build --release -p node --no-default-features --features=starknet --locked"
+            crate_name: node
+          - name: "signer"
+            build_cmd: "cargo build --release -p signer --locked"
+            crate_name: signer
+          - name: "starknet-on-chain-setup"
+            build_cmd: "cargo build --release -p starknet-on-chain-setup --locked"
+            crate_name: starknet-on-chain-setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove unwanted files
+        run: rm -f rust-toolchain.toml
+
+      # Get the crate path for hash computation
+      - name: Get crate source path
+        id: get-crate-path
+        run: |
+          CRATE_PATH=$(cargo info ${{ matrix.crate_name }} | grep -o '(from [^)]*' | sed 's/(from //')
+          echo "crate_path=${CRATE_PATH}" >> $GITHUB_OUTPUT
+          echo "Crate path: ${CRATE_PATH}"
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: dtolnay/rust-toolchain@1.86.0
+
+      # First priority: Try to restore the exact binary cache (fastest)
+      - name: Restore ${{ matrix.name }} binary cache
+        id: binary-cache-restore
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target
+          key: rust-app-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( format('{0}/Cargo.toml', steps.get-crate-path.outputs.crate_path)) }}-${{ hashFiles( format('{0}/src/**', steps.get-crate-path.outputs.crate_path)) }}
+          restore-keys: |
+            rust-app-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( format('{0}/Cargo.toml', steps.get-crate-path.outputs.crate_path)) }}
+            rust-app-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            rust-app-binaries-${{ matrix.name }}-${{ runner.os }}-
+            rust-app-binaries-${{ matrix.name }}-
+
+      # Second priority: If no binary cache, restore release libs cache
+      - name: Restore Rust release libs cache
+        if: ${{ steps.binary-cache-restore.outputs.cache-hit == '' }}
+        id: libs-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target
+          key: rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          restore-keys: |
+            rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}
+            rust-libs-release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            rust-libs-release-${{ runner.os }}-
+            rust-libs-release-
+
+      - name: Build ${{ matrix.name }}
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload ${{ matrix.name }} binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-binary
+          path: target/release/${{ matrix.crate_name }}
+          retention-days: 1
+ 
+
+  build-test-binaries:
+    name: Build test binaries
+    runs-on: ubuntu-latest
+    needs: [ check-cache-debug, build-libs-debug ]
+    if: |
+      always() && !cancelled() &&
+      (needs.build-libs-debug.result == 'success' || needs.check-cache-debug.outputs.cache-hit == 'true')
+    strategy:
+      matrix:
+        include:
+          - name: "node-tests"
+            build_cmd: "cargo test -p node-tests --no-run --locked"
+          - name: "signer-tests"
+            build_cmd: "cargo test -p signer-tests --no-run --locked"
+          - name: "e2e-tests"
+            build_cmd: "cargo test -p e2e-tests --no-run --locked"
+          - name: "concurrency-tests"
+            build_cmd: "cargo test -p concurrency-tests --no-run --locked"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove unwanted files
+        run: rm -f rust-toolchain.toml
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: dtolnay/rust-toolchain@1.86.0
+
+      # Get the crate path for hash computation
+      - name: Get crate source path
+        id: get-crate-path
+        run: |
+          CRATE_PATH=$(cargo info ${{ matrix.name }} | grep -o '(from [^)]*' | sed 's/(from //')
+          echo "crate_path=${CRATE_PATH}" >> $GITHUB_OUTPUT
+          echo "Crate path: ${CRATE_PATH}"
+
+      # First priority: Try to restore the exact binary cache (fastest)
+      - name: Restore ${{ matrix.name }} binary cache
+        id: binary-cache-restore
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/
+          key: rust-test-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( format('{0}/Cargo.toml', steps.get-crate-path.outputs.crate_path)) }}-${{ hashFiles( format('{0}/src/**', steps.get-crate-path.outputs.crate_path)) }}
+          restore-keys: |
+            rust-test-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( format('{0}/Cargo.toml', steps.get-crate-path.outputs.crate_path)) }}
+            rust-test-binaries-${{ matrix.name }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            rust-test-binaries-${{ matrix.name }}-${{ runner.os }}-
+            rust-test-binaries-${{ matrix.name }}-
+
+      # Second priority: If no binary cache, restore debug libs cache
+      - name: Restore Rust debug libs cache
+        if: ${{ steps.binary-cache-restore.outputs.cache-hit == '' }}
+        id: libs-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          restore-keys: |
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            rust-libs-debug-${{ runner.os }}-
+            rust-libs-debug-
+          
+      # Build the test binary (will be very fast if binary cache hit, or moderately fast if libs cache hit)
+      - name: Build ${{ matrix.name }}
+        run: ${{ matrix.build_cmd }}
+
+  unit-test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: [ check-cache-debug, build-libs-debug ]
+    if: |
+      always() && !cancelled() &&
+      (needs.build-libs-debug.result == 'success' || needs.check-cache-debug.outputs.cache-hit == 'true')
+    strategy:
+      matrix:
+        include:
+          - test_cmd: "cargo test -p node --no-default-features --features=starknet,mock,keyset-rotation,tls"
+            crate_name: node
+            cache_key: "node-mock-keyset-tls"
+          - test_cmd: "cargo test -p node --no-default-features --features=starknet,keyset-rotation,tls"
+            crate_name: node
+            cache_key: "node-starknet-keyset-tls"
+          - test_cmd: "cargo test -p signer --no-default-features"
+            crate_name: signer
+            cache_key: "signer-default"
+          - test_cmd: "cargo test -p cli-wallet --no-default-features"
+            crate_name: cli-wallet
+            cache_key: "cli-wallet-default"
+          - test_cmd: "cargo test -p cli-wallet --no-default-features --features=tls,tls-allow-self-signed"
+            crate_name: cli-wallet
+            cache_key: "cli-wallet-tls"
+          - test_cmd: "cargo test -p db-node --no-default-features"
+            crate_name: db-node
+            cache_key: "db-node-default"
+          - test_cmd: "cargo test -p nuts --no-default-features"
+            crate_name: nuts
+            cache_key: "nuts-default"
+          - test_cmd: "cargo test -p nuts --features=starknet,sqlx,nut19"
+            crate_name: nuts
+            cache_key: "nuts-starknet-sqlx-nut19"
+          - test_cmd: "cargo test -p starknet-types --no-default-features"
+            crate_name: starknet-types
+            cache_key: "starknet-types-default"
+          - test_cmd: "cargo test -p wallet --no-default-features"
+            crate_name: wallet
+            cache_key: "wallet-default"
+          - test_cmd: "cargo test -p wallet --no-default-features --features=tls,tls-allow-self-signed"
+            crate_name: wallet
+            cache_key: "wallet-tls"
+          - test_cmd: "cargo test -p liquidity-source --no-default-features"
+            crate_name: liquidity-source
+            cache_key: "liquidity-source-default"
+          - test_cmd: "cargo test -p starknet-on-chain-setup --no-default-features"
+            crate_name: starknet-on-chain-setup
+            cache_key: "starknet-on-chain-setup-default"
+          - test_cmd: "cargo test -p starknet-payment-indexer --no-default-features"
+            crate_name: starknet-payment-indexer
+            cache_key: "starknet-payment-indexer-default"
+          - test_cmd: "cargo test -p starknet-liquidity-source --no-default-features"
+            crate_name: starknet-liquidity-source
+            cache_key: "starknet-liquidity-source-default"
+          - test_cmd: "cargo test -p starknet-liquidity-source --no-default-features --features=mock"
+            crate_name: starknet-liquidity-source
+            cache_key: "starknet-liquidity-source-mock"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove unwanted files
+        run: rm -f rust-toolchain.toml
+      - uses: dtolnay/rust-toolchain@1.86.0
+
+      # Get the crate path for hash computation
+      - name: Get crate source path
+        id: get-crate-path
+        run: |
+          CRATE_PATH=$(cargo info ${{ matrix.crate_name }} | grep -o '(from [^)]*' | sed 's/(from //')
+          echo "crate_path=${CRATE_PATH}" >> $GITHUB_OUTPUT
+          echo "Crate path: ${CRATE_PATH}"
+
       - uses: arduino/setup-protoc@v3
         with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: "28.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore Rust debug libs cache
+        if: ${{ steps.binary-cache-restore.outputs.cache-hit == '' }}
+        id: libs-cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}-${{ hashFiles( './crates/libs/**') }}
+          restore-keys: |
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( '**/Cargo.toml') }}
+            rust-libs-debug-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            rust-libs-debug-${{ runner.os }}-
+            rust-libs-debug-
+
       - name: Run test
         run: ${{ matrix.test_cmd }}
 
   mock-tests:
     name: "Integration Tests (Mock)"
-    needs: [ build-images, build-binary ]
+    needs: [ build-app-binaries, build-test-binaries ]
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: node
+          PGUSER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - name: Remove unwanted files
         run: rm -f rust-toolchain.toml
 
       - uses: dtolnay/rust-toolchain@1.86.0
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Install protoc
         uses: arduino/setup-protoc@v3
         with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           version: "28.x"
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - name: Download node-mock binary
+        uses: actions/download-artifact@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: node-mock-binary
+          path: target/release/
 
-      - name: Set image environment variables
+      - name: Download signer binary
+        uses: actions/download-artifact@v4
+        with:
+          name: signer-binary
+          path: target/release/
+
+      - name: Restore node test binaries
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/
+          key: rust-test-binaries-node-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( './crates/tests/node-tests/Cargo.toml') }}-${{ hashFiles( './crates/tests/node-tests/src/**') }}
+
+      - name: Restore signer test binaries
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            target/
+          key: rust-test-binaries-signer-tests-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( './crates/tests/signer-tests/Cargo.toml') }}-${{ hashFiles( './crates/tests/signer-tests/src/**') }}
+
+      - name: Make binaries executable
         run: |
-          echo "NODE_MOCK_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/node-mock:${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "SIGNER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/signer:${{ github.sha }}" >> $GITHUB_ENV
+          chmod +x target/release/node
+          chmod +x target/release/signer
+          chmod +x target/debug/deps/*
+
+      - name: Start signer service
+        run: |
+          RUST_LOG=info ROOT_KEY="${{ env.ROOT_KEY }}" GRPC_PORT=10001 ./target/release/signer &
+          echo $! > signer.pid
         
-      - name: Restore test binaries
-        uses: actions/cache/restore@v3
-        with:
-          path: target
-          key: test-binaries-${{ github.run_id }}-${{ github.run_attempt }}
-          fail-on-cache-miss: true
-
-      - name: Start integration service (mock)
+      - name: Start node service (mock)
         run: |
-          docker compose -f docker-compose.ci-mock.yml up -d
+          RUST_LOG=info PG_URL="${{ env.PG_URL }}" SIGNER_URL="${{ env.SIGNER_URL }}" GRPC_PORT=10003 \
+          ./target/release/node &
+          echo $! > node.pid
 
-      - name: Wait for integration services to be healthy
+      - name: Wait for services to be ready
         run: |
-          echo "Waiting for services to be healthy..."
-          timeout 300 bash -c '
-            until docker compose -f docker-compose.ci-mock.yml ps --format "table {{.Service}}\t{{.Status}}" | grep -E "(healthy|running)" | wc -l | grep -q "3"; do
-              echo "Waiting for mock services to be ready..."
-              sleep 2
-              docker compose -f docker-compose.ci-mock.yml ps
-            done
-          '
+          echo "Waiting for signer to be ready..."
+          timeout 60 bash -c 'until nc -z localhost 10001; do sleep 1; done'
+          
+          echo "Waiting for node to be ready..."
+          timeout 60 bash -c 'until nc -z localhost 10003; do sleep 1; done'
 
       - name: Run node integration tests
         env:
@@ -262,97 +541,166 @@ jobs:
           ROOT_KEY: "${{ env.ROOT_KEY }}"
         run: cargo test -p signer-tests
 
-      - name: Cleanup integration tests
+      - name: Cleanup services
         if: always()
         run: |
-          docker compose -f docker-compose.ci-mock.yml down -v
-          docker system prune -f
+          if [ -f signer.pid ]; then
+            kill $(cat signer.pid) || true
+            rm signer.pid
+          fi
+          if [ -f node.pid ]; then
+            kill $(cat node.pid) || true
+            rm node.pid
+          fi
 
-  starknet-tests:
-    name: "Integration Tests (Starknet)"
-    needs: [ build-images, build-binary ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Remove unwanted files
-        run: rm -f rust-toolchain.toml
+  # starknet-tests:
+  #   name: "Integration Tests (Starknet)"
+  #   needs: [ build-app-binaries, build-test-binaries ]
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     postgres:
+  #       image: postgres
+  #       env:
+  #         POSTGRES_USER: postgres
+  #         POSTGRES_PASSWORD: password
+  #         POSTGRES_DB: node
+  #         PGUSER: postgres
+  #       ports:
+  #         - 5432:5432
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Remove unwanted files
+  #       run: rm -f rust-toolchain.toml
 
-      - uses: dtolnay/rust-toolchain@1.86.0
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  #     - uses: dtolnay/rust-toolchain@1.86.0
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
 
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          version: "28.x"
+  #     - name: Install protoc
+  #       uses: arduino/setup-protoc@v3
+  #       with:
+  #         version: "28.x"
+  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: Restore node-starknet binary
+  #       uses: actions/cache/restore@v4
+  #       with:
+  #         path: target
+  #         key: node-starknet-binary-${{ github.run_id }}-${{ github.run_attempt }}
+  #         fail-on-cache-miss: true
 
-      - name: Set image environment variables
-        run: |
-          echo "NODE_STARKNET_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/node:${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "SIGNER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/signer:${{ github.sha }}" >> $GITHUB_ENV
-          echo "STARKNET_SETUP_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/starknet-setup:${{ github.sha }}" >> $GITHUB_ENV
+  #     - name: Restore signer binary
+  #       uses: actions/cache/restore@v4
+  #       with:
+  #         path: target
+  #         key: signer-binary-${{ github.run_id }}-${{ github.run_attempt }}
+  #         fail-on-cache-miss: true
 
-      - name: Restore test binaries
-        uses: actions/cache/restore@v3
-        with:
-          path: target
-          key: test-binaries-${{ github.run_id }}-${{ github.run_attempt }}
-          fail-on-cache-miss: true
+  #     - name: Restore concurrency test binary
+  #       uses: actions/cache/restore@v4
+  #       with:
+  #         path: target
+  #         key: concurrency-tests-${{ github.run_id }}-${{ github.run_attempt }}
+  #         fail-on-cache-miss: true
 
-      - name: Start services  
-        run: |
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml up -d
+  #     - name: Restore e2e test binary
+  #       uses: actions/cache/restore@v4
+  #       with:
+  #         path: target
+  #         key: e2e-tests-${{ github.run_id }}-${{ github.run_attempt }}
+  #         fail-on-cache-miss: true
 
-      - name: Wait for services to be healthy
-        run: |
-          echo "Waiting for services to be healthy..."
-          timeout 300 bash -c '
-            until docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml ps --format "table {{.Service}}\t{{.Status}}" | grep -E "(healthy|running)" | wc -l | grep -q "4"; do
-              echo "Waiting for all services to be ready..."
-              sleep 2
-              docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml ps
-            done
-          '
+  #     - name: Restore starknet-on-chain-setup binary
+  #       uses: actions/cache/restore@v3
+  #       with:
+  #         path: target
+  #         key: starknet-on-chain-setup-binary-${{ github.run_id }}-${{ github.run_attempt }}
+  #         fail-on-cache-miss: true
 
-      - name: Run basic health checks
-        run: |
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml exec -T db pg_isready -U postgres
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml exec -T signer /bin/grpc_health_probe -addr=localhost:10001
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml exec -T node /bin/grpc_health_probe -addr=localhost:10003
-          curl -f http://localhost:5050/is_alive
+  #     - name: Start testnet services
+  #       run: |
+  #         docker compose -f docker-compose.ci-testnet.yml up -d
 
-      - name: Cleanup CLI wallet DB
-        if: always()
-        run: rm -rf /home/runner/.local/share
+  #     - name: Wait for testnet services to be healthy
+  #       run: |
+  #         echo "Waiting for testnet services to be healthy..."
+  #         sleep 5
 
-      - name: Run E2E and concurrency tests
-        env:
-          NODE_URL: http://localhost:10003
-          RPC_URL: http://localhost:5050
-          PRIVATE_KEY: "0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9"
-          ACCOUNT_ADDRESS: "0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691"
-        run: |
-          cargo test -p e2e-tests
-          cargo test -p concurrency-tests
+  #     - name: Run starknet on-chain setup
+  #       run: |
+  #         RUST_LOG=info ./target/release/starknet-on-chain-setup \
+  #           --chain-id=SN_DEVNET \
+  #           --url=http://localhost:5050 \
+  #           --private-key=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
+  #           --account-address=0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691 \
+  #           declare \
+  #           --sierra-json=./contracts/invoice/target/release/invoice_payment_InvoicePayment.contract_class.json \
+  #           --compiled-class-hash=$(cat ./contracts/invoice/compiled_class_hash.txt || echo "")
 
-      - name: Show logs on failure
-        if: failure()
-        run: |
+  #     - name: Start signer service
+  #       run: |
+  #         RUST_LOG=info ROOT_KEY="${{ env.ROOT_KEY }}" GRPC_PORT=10001 ./target/release/signer &
+  #         echo $! > signer.pid
 
-          echo "=== Docker compose logs ==="
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml logs
-          echo "=== Docker compose ps ==="
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml ps
+  #     - name: Start node service (starknet)
+  #       run: |
+  #         RUST_LOG=info PG_URL="${{ env.PG_URL }}" SIGNER_URL="${{ env.SIGNER_URL }}" \
+  #         DNA_URI=http://localhost:7171 \
+  #         CASHIER_PRIVATE_KEY=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
+  #         GRPC_PORT=10003 \
+  #         ./target/release/node --config ./crates/bin/node/config/local.toml &
+  #         echo $! > node.pid
+
+  #     - name: Wait for local services to be ready
+  #       run: |
+  #         echo "Waiting for signer to be ready..."
+  #         timeout 60 bash -c 'until nc -z localhost 10001; do sleep 1; done'
+          
+  #         echo "Waiting for node to be ready..."
+  #         timeout 60 bash -c 'until nc -z localhost 10003; do sleep 1; done'
+
+  #     - name: Run basic health checks
+  #       run: |
+  #         pg_isready -h localhost -p 5432 -U postgres
+  #         curl -f http://localhost:5050/is_alive
+
+  #     - name: Cleanup CLI wallet DB
+  #       if: always()
+  #       run: rm -rf /home/runner/.local/share
+
+  #     - name: Run E2E and concurrency tests
+  #       env:
+  #         NODE_URL: http://localhost:10003
+  #         RPC_URL: http://localhost:5050
+  #         PRIVATE_KEY: "0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9"
+  #         ACCOUNT_ADDRESS: "0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691"
+  #       run: |
+  #         cargo test -p e2e-tests
+  #         cargo test -p concurrency-tests
+
+  #     - name: Show logs on failure
+  #       if: failure()
+  #       run: |
+  #         echo "=== Docker compose logs ==="
+  #         docker compose -f docker-compose.ci-testnet.yml logs
+  #         echo "=== Docker compose ps ==="
+  #         docker compose -f docker-compose.ci-testnet.yml ps
   
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose -f docker-compose.ci-starknet.yml -f docker-compose.ci-testnet.yml down -v
-          docker system prune -f
+  #     - name: Cleanup
+  #       if: always()
+  #       run: |
+  #         if [ -f signer.pid ]; then
+  #           kill $(cat signer.pid) || true
+  #           rm signer.pid
+  #         fi
+  #         if [ -f node.pid ]; then
+  #           kill $(cat node.pid) || true
+  #           rm node.pid
+  #         fi
+  #         docker compose -f docker-compose.ci-testnet.yml down -v
+  #         docker system prune -f
