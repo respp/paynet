@@ -145,7 +145,6 @@ jobs:
       
       - uses: dtolnay/rust-toolchain@1.86.0
 
-      # Get the crate path for hash computation
       - name: Get crate source path
         id: get-crate-path
         run: |
@@ -168,6 +167,83 @@ jobs:
 
       - name: Build ${{ matrix.name }}
         run: ${{ matrix.build_cmd }}
+
+      - name: Extract and upload ${{ matrix.name }} test binaries
+        run: |
+          # Extract binary paths using the shell oneliner
+          binaries=$(${{ matrix.build_cmd }} 2>&1 | grep "Executable" | sed 's/.*(\(.*\))/\1/')
+          
+          if [ -z "$binaries" ]; then
+            echo "Error: Could not find any test binaries for ${{ matrix.name }}"
+            exit 1
+          fi
+          
+          # Create a directory for the artifact
+          mkdir -p ./test-binaries/
+          
+          # Copy each binary with its original name
+          for binary in $binaries; do
+            if [ -f "$binary" ]; then
+              binary_name=$(basename "$binary")
+              cp "$binary" "./test-binaries/$binary_name"
+              chmod +x "./test-binaries/$binary_name"
+              echo "Copied: $binary -> ./test-binaries/$binary_name"
+            else
+              echo "Warning: Binary not found: $binary"
+            fi
+          done
+          
+          # List what we have
+          echo "Test binaries prepared:"
+          ls -l ./test-binaries/
+
+      - name: Upload ${{ matrix.name }} test binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-test-binaries
+          path: ./test-binaries
+          retention-days: 1
+
+  build-starknet-contracts:
+    name: Build Starknet contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            contracts/invoice
+          sparse-checkout-cone-mode: false
+
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.9.2"
+          scarb-lock: contracts/invoice/Scarb.lock 
+          cache: true
+          cache-targets: true
+      
+      - name: Install Starkli
+        run: |
+          mkdir -p /tmp/tools
+          curl -s -L https://github.com/xJonathanLEI/starkli/releases/download/v0.3.8/starkli-$(uname -m)-unknown-linux-gnu.tar.gz | tar xz -C /tmp/tools/
+          chmod +x /tmp/tools/starkli
+      
+      - name: Build contracts
+        working-directory: ./contracts/invoice
+        run: scarb --profile release build
+      
+      - name: Generate compiled class hash
+        working-directory: ./contracts/invoice
+        run: |
+          /tmp/tools/starkli class-hash ./target/release/invoice_payment_InvoicePayment.compiled_contract_class.json > ./compiled_class_hash.txt
+      
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: starknet-contracts
+          path: |
+            contracts/invoice/target/release/invoice_payment_InvoicePayment.contract_class.json
+            contracts/invoice/compiled_class_hash.txt
+          retention-days: 1
 
   unit-test:
     name: Unit tests
@@ -254,18 +330,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Remove unwanted files
-        run: rm -f rust-toolchain.toml
-
-      - uses: dtolnay/rust-toolchain@1.86.0
-
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "28.x"
-
       - name: Download node-mock binary
         uses: actions/download-artifact@v4
         with:
@@ -278,26 +342,30 @@ jobs:
           name: signer-binary
           path: target/release/
 
+      - name: Download node tests binary
+        uses: actions/download-artifact@v4
+        with:
+          name: node-tests-test-binaries
+          path: node-tests/
+
+      - name: Download signer tests binary
+        uses: actions/download-artifact@v4
+        with:
+          name: signer-tests-test-binaries
+          path: signer-tests/
+
       - name: Make binaries executable
         run: |
           chmod +x target/release/node
           chmod +x target/release/signer
+          chmod +x node-tests/*
+          chmod +x signer-tests/*
 
       - name: Start signer service
         run: |
           RUST_LOG=info ROOT_KEY="${{ env.ROOT_KEY }}" GRPC_PORT=10001 ./target/release/signer &
           echo $! > signer.pid
         
-      - name: Restore signer test binaries
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            target/
-          key: rust-${{ runner.os }}-test-binaries-signer-tests-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( './crates/tests/signer-tests/Cargo.toml') }}-${{ hashFiles( './crates/tests/signer-tests/src/**') }}
-          fail-on-cache-miss: true
-
       - name: Wait for signer service to be ready
         run: |
           echo "Waiting for signer to be ready..."
@@ -307,23 +375,30 @@ jobs:
         env:
           GRPC_PORT: 10001
           ROOT_KEY: "${{ env.ROOT_KEY }}"
-        run: cargo test -p signer-tests
+        run: |
+          # Run all executables in the signer-tests directory one after the other
+          echo "Running all signer integration tests..."
+          
+          for test_binary in ./signer-tests/*; do
+            if [ -f "$test_binary" ] && [ -x "$test_binary" ]; then
+              echo "Running: $(basename "$test_binary")"
+              "$test_binary"
+              exit_code=$?
+              if [ $exit_code -ne 0 ]; then
+                echo "Test failed: $(basename "$test_binary") (exit code: $exit_code)"
+                exit $exit_code
+              fi
+              echo "✓ Passed: $(basename "$test_binary")"
+            fi
+          done
+          
+          echo "All signer integration tests completed successfully!"
 
       - name: Start node service (mock)
         run: |
           RUST_LOG=info PG_URL="${{ env.PG_URL }}" SIGNER_URL="${{ env.SIGNER_URL }}" GRPC_PORT=10003 \
           ./target/release/node &
           echo $! > node.pid
-
-      - name: Restore node test binaries
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            target/
-          key: rust-${{ runner.os }}-test-binaries-node-tests-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles( './crates/tests/node-tests/Cargo.toml') }}-${{ hashFiles( './crates/tests/node-tests/src/**') }}
-          fail-on-cache-miss: true
 
       - name: Wait for node service to be ready
         run: |
@@ -333,7 +408,24 @@ jobs:
       - name: Run node integration tests
         env:
           GRPC_PORT: 10003
-        run: cargo test -p node-tests
+        run: |
+          # Run all executables in the node-tests directory one after the other
+          echo "Running all node integration tests..."
+          
+          for test_binary in ./node-tests/*; do
+            if [ -f "$test_binary" ] && [ -x "$test_binary" ]; then
+              echo "Running: $(basename "$test_binary")"
+              "$test_binary"
+              exit_code=$?
+              if [ $exit_code -ne 0 ]; then
+                echo "Test failed: $(basename "$test_binary") (exit code: $exit_code)"
+                exit $exit_code
+              fi
+              echo "✓ Passed: $(basename "$test_binary")"
+            fi
+          done
+          
+          echo "All node integration tests completed successfully!"
 
       - name: Cleanup services
         if: always()
@@ -347,154 +439,185 @@ jobs:
             rm node.pid
           fi
 
-  # starknet-tests:
-  #   name: "Integration Tests (Starknet)"
-  #   needs: [ build-app-binaries, build-test-binaries ]
-  #   runs-on: ubuntu-latest
-  #   services:
-  #     postgres:
-  #       image: postgres
-  #       env:
-  #         POSTGRES_USER: postgres
-  #         POSTGRES_PASSWORD: password
-  #         POSTGRES_DB: node
-  #         PGUSER: postgres
-  #       ports:
-  #         - 5432:5432
-  #       options: >-
-  #         --health-cmd pg_isready
-  #         --health-interval 10s
-  #         --health-timeout 5s
-  #         --health-retries 5
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Remove unwanted files
-  #       run: rm -f rust-toolchain.toml
 
-  #     - uses: dtolnay/rust-toolchain@1.86.0
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
+  starknet-tests:
+    name: "Integration Tests (Starknet)"
+    needs: [ build-app-binaries, build-test-binaries, build-starknet-contracts ]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: node
+          PGUSER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            crates/bins/node/config/local.toml
+            docker-compose.ci-testnet.yml
+          sparse-checkout-cone-mode: false
 
-  #     - name: Install protoc
-  #       uses: arduino/setup-protoc@v3
-  #       with:
-  #         version: "28.x"
-  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download node-starknet binary
+        uses: actions/download-artifact@v4
+        with:
+          name: node-starknet-binary
+          path: target/release/
 
-  #     - name: Restore node-starknet binary
-  #       uses: actions/cache/restore@v4
-  #       with:
-  #         path: target
-  #         key: node-starknet-binary-${{ github.run_id }}-${{ github.run_attempt }}
-  #         fail-on-cache-miss: true
+      - name: Download signer binary
+        uses: actions/download-artifact@v4
+        with:
+          name: signer-binary
+          path: target/release/
 
-  #     - name: Restore signer binary
-  #       uses: actions/cache/restore@v4
-  #       with:
-  #         path: target
-  #         key: signer-binary-${{ github.run_id }}-${{ github.run_attempt }}
-  #         fail-on-cache-miss: true
+      - name: Download starknet-on-chain-setup binary
+        uses: actions/download-artifact@v4
+        with:
+          name: starknet-on-chain-setup-binary
+          path: target/release/
 
-  #     - name: Restore concurrency test binary
-  #       uses: actions/cache/restore@v4
-  #       with:
-  #         path: target
-  #         key: concurrency-tests-${{ github.run_id }}-${{ github.run_attempt }}
-  #         fail-on-cache-miss: true
+      - name: Download contract artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: starknet-contracts
+          path: contracts/invoice/
 
-  #     - name: Restore e2e test binary
-  #       uses: actions/cache/restore@v4
-  #       with:
-  #         path: target
-  #         key: e2e-tests-${{ github.run_id }}-${{ github.run_attempt }}
-  #         fail-on-cache-miss: true
+      - name: Download e2e tests binary
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-tests-test-binaries
+          path: e2e-tests
 
-  #     - name: Restore starknet-on-chain-setup binary
-  #       uses: actions/cache/restore@v3
-  #       with:
-  #         path: target
-  #         key: starknet-on-chain-setup-binary-${{ github.run_id }}-${{ github.run_attempt }}
-  #         fail-on-cache-miss: true
+      - name: Download concurrency tests binary
+        uses: actions/download-artifact@v4
+        with:
+          name: concurrency-tests-test-binaries
+          path: concurrency-tests/
 
-  #     - name: Start testnet services
-  #       run: |
-  #         docker compose -f docker-compose.ci-testnet.yml up -d
+      - name: Make binaries executable
+        run: |
+          chmod +x target/release/node
+          chmod +x target/release/signer
+          chmod +x target/release/starknet-on-chain-setup
+          chmod +x e2e-tests/*
+          chmod +x concurrency-tests/*
 
-  #     - name: Wait for testnet services to be healthy
-  #       run: |
-  #         echo "Waiting for testnet services to be healthy..."
-  #         sleep 5
+      - name: Start testnet services
+        run: |
+          docker compose -f docker-compose.ci-testnet.yml up -d
 
-  #     - name: Run starknet on-chain setup
-  #       run: |
-  #         RUST_LOG=info ./target/release/starknet-on-chain-setup \
-  #           --chain-id=SN_DEVNET \
-  #           --url=http://localhost:5050 \
-  #           --private-key=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
-  #           --account-address=0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691 \
-  #           declare \
-  #           --sierra-json=./contracts/invoice/target/release/invoice_payment_InvoicePayment.contract_class.json \
-  #           --compiled-class-hash=$(cat ./contracts/invoice/compiled_class_hash.txt || echo "")
+      - name: Wait for testnet services to be healthy
+        run: |
+          echo "Waiting for testnet services to be healthy..."
+          sleep 5
 
-  #     - name: Start signer service
-  #       run: |
-  #         RUST_LOG=info ROOT_KEY="${{ env.ROOT_KEY }}" GRPC_PORT=10001 ./target/release/signer &
-  #         echo $! > signer.pid
+      - name: Run starknet on-chain setup
+        run: |
+          RUST_LOG=info ./target/release/starknet-on-chain-setup \
+            --chain-id=SN_DEVNET \
+            --url=http://localhost:5050 \
+            --private-key=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
+            --account-address=0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691 \
+            declare \
+            --sierra-json=./contracts/invoice/target/release/invoice_payment_InvoicePayment.contract_class.json \
+            --compiled-class-hash=$(cat ./contracts/invoice/compiled_class_hash.txt)
 
-  #     - name: Start node service (starknet)
-  #       run: |
-  #         RUST_LOG=info PG_URL="${{ env.PG_URL }}" SIGNER_URL="${{ env.SIGNER_URL }}" \
-  #         DNA_URI=http://localhost:7171 \
-  #         CASHIER_PRIVATE_KEY=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
-  #         GRPC_PORT=10003 \
-  #         ./target/release/node --config ./crates/bin/node/config/local.toml &
-  #         echo $! > node.pid
+      - name: Start signer service
+        run: |
+          RUST_LOG=info ROOT_KEY="${{ env.ROOT_KEY }}" GRPC_PORT=10001 ./target/release/signer &
+          echo $! > signer.pid
 
-  #     - name: Wait for local services to be ready
-  #       run: |
-  #         echo "Waiting for signer to be ready..."
-  #         timeout 60 bash -c 'until nc -z localhost 10001; do sleep 1; done'
+      - name: Start node service (starknet)
+        run: |
+          RUST_LOG=info PG_URL="${{ env.PG_URL }}" SIGNER_URL="${{ env.SIGNER_URL }}" \
+          DNA_URI=http://localhost:7171 \
+          CASHIER_PRIVATE_KEY=0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9 \
+          GRPC_PORT=10003 \
+          ./target/release/node --config ./crates/bins/node/config/local.toml &
+          echo $! > node.pid
+
+      - name: Wait for local services to be ready
+        run: |
+          echo "Waiting for signer to be ready..."
+          timeout 60 bash -c 'until nc -z localhost 10001; do sleep 1; done'
           
-  #         echo "Waiting for node to be ready..."
-  #         timeout 60 bash -c 'until nc -z localhost 10003; do sleep 1; done'
+          echo "Waiting for node to be ready..."
+          timeout 60 bash -c 'until nc -z localhost 10003; do sleep 1; done'
 
-  #     - name: Run basic health checks
-  #       run: |
-  #         pg_isready -h localhost -p 5432 -U postgres
-  #         curl -f http://localhost:5050/is_alive
+      - name: Run basic health checks
+        run: |
+          pg_isready -h localhost -p 5432 -U postgres
+          curl -f http://localhost:5050/is_alive
 
-  #     - name: Cleanup CLI wallet DB
-  #       if: always()
-  #       run: rm -rf /home/runner/.local/share
+      - name: Run E2E tests
+        env:
+          NODE_URL: http://localhost:10003
+          RPC_URL: http://localhost:5050
+          PRIVATE_KEY: "0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9"
+          ACCOUNT_ADDRESS: "0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691"
+        run: |
+          # Run all executables in the e2e-tests directory one after the other
+          echo "Running all e2e integration tests..."
+          
+          for test_binary in ./e2e-tests/*; do
+            if [ -f "$test_binary" ] && [ -x "$test_binary" ]; then
+              echo "Running: $(basename "$test_binary")"
+              "$test_binary"
+              exit_code=$?
+              if [ $exit_code -ne 0 ]; then
+                echo "Test failed: $(basename "$test_binary") (exit code: $exit_code)"
+                exit $exit_code
+              fi
+              echo "✓ Passed: $(basename "$test_binary")"
+            fi
+          done
+          
+          echo "All e2e integration tests completed successfully!"
 
-  #     - name: Run E2E and concurrency tests
-  #       env:
-  #         NODE_URL: http://localhost:10003
-  #         RPC_URL: http://localhost:5050
-  #         PRIVATE_KEY: "0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9"
-  #         ACCOUNT_ADDRESS: "0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691"
-  #       run: |
-  #         cargo test -p e2e-tests
-  #         cargo test -p concurrency-tests
+      - name: Run concurrency tests
+        env:
+          NODE_URL: http://localhost:10003
+          RPC_URL: http://localhost:5050
+          PRIVATE_KEY: "0x0000000000000000000000000000000071d7bb07b9a64f6f78ac4c816aff4da9"
+          ACCOUNT_ADDRESS: "0x064b48806902a367c8598f4f95c305e8c1a1acba5f082d294a43793113115691"
+        run: |
+          # Run all executables in the concurrency-tests directory one after the other
+          echo "Running all concurrency integration tests..."
+          
+          for test_binary in ./concurrency-tests/*; do
+            if [ -f "$test_binary" ] && [ -x "$test_binary" ]; then
+              echo "Running: $(basename "$test_binary")"
+              "$test_binary"
+              exit_code=$?
+              if [ $exit_code -ne 0 ]; then
+                echo "Test failed: $(basename "$test_binary") (exit code: $exit_code)"
+                exit $exit_code
+              fi
+              echo "✓ Passed: $(basename "$test_binary")"
+            fi
+          done
+          
+          echo "All concurrency integration tests completed successfully!"
 
-  #     - name: Show logs on failure
-  #       if: failure()
-  #       run: |
-  #         echo "=== Docker compose logs ==="
-  #         docker compose -f docker-compose.ci-testnet.yml logs
-  #         echo "=== Docker compose ps ==="
-  #         docker compose -f docker-compose.ci-testnet.yml ps
-  
-  #     - name: Cleanup
-  #       if: always()
-  #       run: |
-  #         if [ -f signer.pid ]; then
-  #           kill $(cat signer.pid) || true
-  #           rm signer.pid
-  #         fi
-  #         if [ -f node.pid ]; then
-  #           kill $(cat node.pid) || true
-  #           rm node.pid
-  #         fi
-  #         docker compose -f docker-compose.ci-testnet.yml down -v
-  #         docker system prune -f
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -f signer.pid ]; then
+            kill $(cat signer.pid) || true
+            rm signer.pid
+          fi
+          if [ -f node.pid ]; then
+            kill $(cat node.pid) || true
+            rm node.pid
+          fi
+          docker compose -f docker-compose.ci-testnet.yml down
+          docker system prune -f
