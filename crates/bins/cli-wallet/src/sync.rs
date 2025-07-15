@@ -201,7 +201,7 @@ async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
 
     for wad_record in pending_wads {
         let result = sync_single_wad(pool.clone(), &wad_record).await;
-        
+
         match result {
             Ok(new_status) => {
                 if let Some(status) = new_status {
@@ -213,9 +213,9 @@ async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
                 // Mark as failed
                 let db_conn = pool.get()?;
                 let _ = wallet::db::wad::update_wad_status(
-                    &db_conn, 
-                    &wad_record.uuid, 
-                    wallet::db::wad::WadStatus::Failed
+                    &db_conn,
+                    &wad_record.uuid,
+                    wallet::db::wad::WadStatus::Failed,
                 );
             }
         }
@@ -225,11 +225,11 @@ async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
 }
 
 async fn sync_single_wad(
-    pool: Pool<SqliteConnectionManager>, 
-    wad_record: &wallet::db::wad::WadRecord
+    pool: Pool<SqliteConnectionManager>,
+    wad_record: &wallet::db::wad::WadRecord,
 ) -> Result<Option<wallet::db::wad::WadStatus>> {
     use node_client::{CheckStateRequest, ProofState};
-    
+
     // Get proof public keys for this WAD
     let proof_ys = {
         let db_conn = pool.get()?;
@@ -241,7 +241,7 @@ async fn sync_single_wad(
     }
 
     // Parse the WAD data to get node information
-    let compact_wad: wallet::types::compact_wad::CompactWad<starknet_types::Unit> = 
+    let compact_wad: wallet::types::compact_wad::CompactWad<starknet_types::Unit> =
         serde_json::from_str(&wad_record.wad_data)?;
 
     // Connect to the node
@@ -279,11 +279,20 @@ async fn sync_single_wad(
     }
 
     // Determine new status based on proof states
-    let new_status = match (wad_record.wad_type.clone(), all_spent, any_spent, any_pending) {
+    let new_status = match (
+        wad_record.wad_type.clone(),
+        all_spent,
+        any_spent,
+        any_pending,
+    ) {
         // For outgoing WADs: if all proofs are spent, it's finished
-        (wallet::db::wad::WadType::Outgoing, true, _, _) => Some(wallet::db::wad::WadStatus::Finished),
-        // For incoming WADs: if any proofs are spent (received), it's finished  
-        (wallet::db::wad::WadType::Incoming, _, true, _) => Some(wallet::db::wad::WadStatus::Finished),
+        (wallet::db::wad::WadType::Outgoing, true, _, _) => {
+            Some(wallet::db::wad::WadStatus::Finished)
+        }
+        // For incoming WADs: if any proofs are spent (received), it's finished
+        (wallet::db::wad::WadType::Incoming, _, true, _) => {
+            Some(wallet::db::wad::WadStatus::Finished)
+        }
         // If there are pending states, keep as pending
         (_, _, _, true) => None, // Keep current status
         // Otherwise, keep current status

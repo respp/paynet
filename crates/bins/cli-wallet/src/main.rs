@@ -572,24 +572,24 @@ async fn main() -> Result<()> {
         Commands::History { limit } => {
             let db_conn = pool.get()?;
             let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit)?;
-            
+
             if wad_records.is_empty() {
                 println!("No WAD history found.");
                 return Ok(());
             }
 
             println!("WAD History (showing {} most recent):\n", wad_records.len());
-            
+
             for wad_record in wad_records {
                 println!("UUID: {}", wad_record.uuid);
                 println!("Type: {}", wad_record.wad_type);
                 println!("Status: {}", wad_record.status);
                 println!("Total Amount: {}", wad_record.total_amount_json);
-                
+
                 if let Some(memo) = &wad_record.memo {
                     println!("Memo: {}", memo);
                 }
-                
+
                 println!("Created: {} (unix timestamp)", wad_record.created_at);
                 println!("Modified: {} (unix timestamp)", wad_record.modified_at);
                 println!("---");

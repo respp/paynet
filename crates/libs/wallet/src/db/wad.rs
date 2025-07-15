@@ -1,7 +1,7 @@
-use rusqlite::{Connection, Result, params};
-use nuts::nut01::PublicKey;
 use crate::types::compact_wad::CompactWad;
+use nuts::nut01::PublicKey;
 use nuts::traits::Unit;
+use rusqlite::{Connection, Result, params};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ impl std::fmt::Display for WadStatus {
 
 impl std::str::FromStr for WadStatus {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Pending" => Ok(WadStatus::Pending),
@@ -57,7 +57,7 @@ pub struct WadRecord {
     pub uuid: String,
     pub wad_type: WadType,
     pub status: WadStatus,
-    pub wad_data: String, // JSON string of CompactWad
+    pub wad_data: String,          // JSON string of CompactWad
     pub total_amount_json: String, // JSON array of unit/amount pairs
     pub memo: Option<String>,
     pub created_at: u64,
@@ -73,13 +73,14 @@ pub fn insert_wad<U: Unit + serde::Serialize>(
 ) -> Result<()> {
     let wad_data = serde_json::to_string(wad)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    
-    let total_amount = wad.value()
+
+    let total_amount = wad
+        .value()
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    
+
     let total_amount_json = serde_json::to_string(&[(wad.unit.to_string(), total_amount)])
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    
+
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -121,21 +122,27 @@ pub fn insert_wad<U: Unit + serde::Serialize>(
 
 fn parse_wad_record(row: &rusqlite::Row) -> rusqlite::Result<WadRecord> {
     let status_str: String = row.get(2)?;
-    let status = status_str.parse()
-        .map_err(|e: String| rusqlite::Error::FromSqlConversionFailure(
-            2, 
-            rusqlite::types::Type::Text, 
-            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        ))?;
-    
+    let status = status_str.parse().map_err(|e: String| {
+        rusqlite::Error::FromSqlConversionFailure(
+            2,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+        )
+    })?;
+
     let wad_type = match row.get::<_, String>(1)?.as_str() {
         "incoming" => WadType::Incoming,
         "outgoing" => WadType::Outgoing,
-        _ => return Err(rusqlite::Error::FromSqlConversionFailure(
-            1, 
-            rusqlite::types::Type::Text, 
-            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid wad type"))
-        )),
+        _ => {
+            return Err(rusqlite::Error::FromSqlConversionFailure(
+                1,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Invalid wad type",
+                )),
+            ));
+        }
     };
 
     Ok(WadRecord {
@@ -203,8 +210,9 @@ pub fn get_wad_proofs(conn: &Connection, wad_uuid: &str) -> Result<Vec<PublicKey
     let mut stmt = conn.prepare(GET_WAD_PROOFS)?;
     let rows = stmt.query_map([wad_uuid], |row| {
         let y_bytes: Vec<u8> = row.get(0)?;
-        PublicKey::from_slice(&y_bytes)
-            .map_err(|e| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Blob, Box::new(e)))
+        PublicKey::from_slice(&y_bytes).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Blob, Box::new(e))
+        })
     })?;
 
     let mut proof_ys = Vec::new();
@@ -213,4 +221,4 @@ pub fn get_wad_proofs(conn: &Connection, wad_uuid: &str) -> Result<Vec<PublicKey
     }
 
     Ok(proof_ys)
-} 
+}
