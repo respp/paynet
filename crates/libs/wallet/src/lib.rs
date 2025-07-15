@@ -556,7 +556,8 @@ pub async fn receive_wad_with_history<U: Unit + serde::Serialize>(
     };
 
     // Extract proof public keys for tracking
-    let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs.iter()
+    let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs
+        .iter()
         .flat_map(|keyset_proof| &keyset_proof.proofs)
         .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
         .collect();
@@ -584,7 +585,8 @@ pub async fn receive_wad_with_history<U: Unit + serde::Serialize>(
         node_id,
         unit.as_ref(),
         compact_keyset_proofs,
-    ).await;
+    )
+    .await;
 
     // Update WAD status based on receive result
     {
@@ -764,26 +766,27 @@ pub fn create_wad_from_proofs_with_history<U: Unit + serde::Serialize>(
     proofs: Vec<Proof>,
 ) -> Result<CompactWad<U>, Error> {
     // Extract proof public keys for tracking
-    let proof_ys: Result<Vec<_>, _> = proofs.iter()
+    let proof_ys: Result<Vec<_>, _> = proofs
+        .iter()
         .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
         .collect();
     let proof_ys = proof_ys?;
-    
+
     // Create the WAD
     let wad = create_wad_from_proofs(node_url, unit, memo, proofs);
-    
+
     // Generate UUID for WAD
     let wad_uuid = uuid::Uuid::new_v4().to_string();
-    
+
     // Store in database
     let db_conn = pool.get()?;
     db::wad::insert_wad(
-        &db_conn, 
-        &wad_uuid, 
-        db::wad::WadType::Outgoing, 
-        &wad, 
-        &proof_ys
+        &db_conn,
+        &wad_uuid,
+        db::wad::WadType::Outgoing,
+        &wad,
+        &proof_ys,
     )?;
-    
+
     Ok(wad)
 }

@@ -4,7 +4,8 @@ mod migrations;
 mod parse_asset_amount;
 
 use commands::{
-    add_node, create_mint_quote, create_wads, get_nodes_balance, get_wad_history, receive_wads, redeem_quote,
+    add_node, create_mint_quote, create_wads, get_nodes_balance, get_wad_history, receive_wads,
+    redeem_quote,
 };
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;

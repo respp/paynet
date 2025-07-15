@@ -220,7 +220,7 @@ pub async fn get_wad_history(
 ) -> Result<Vec<WadHistoryItem>, GetWadHistoryError> {
     let db_conn = state.pool.get()?;
     let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit.unwrap_or(20))?;
-    
+
     let history_items = wad_records
         .into_iter()
         .map(|record| WadHistoryItem {
