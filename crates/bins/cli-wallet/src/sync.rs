@@ -36,6 +36,10 @@ pub async fn sync_all_pending_operations(pool: Pool<SqliteConnectionManager>) ->
         sync_melt_quotes(&pool, &mut node_client, &pending_quotes).await?;
     }
 
+    // Sync pending WADs
+    println!("Syncing pending WADs");
+    sync_pending_wads(pool).await?;
+
     println!("Sync completed for all nodes");
     Ok(())
 }
@@ -180,4 +184,117 @@ pub fn format_melt_transfers_id_into_term_message(transfer_ids: Vec<String>) -> 
     }
 
     string_to_print
+}
+
+async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
+    let pending_wads = {
+        let db_conn = pool.get()?;
+        wallet::db::wad::get_pending_wads(&db_conn)?
+    };
+
+    if pending_wads.is_empty() {
+        println!("No pending WADs to sync");
+        return Ok(());
+    }
+
+    println!("Found {} pending WADs", pending_wads.len());
+
+    for wad_record in pending_wads {
+        let result = sync_single_wad(pool.clone(), &wad_record).await;
+        
+        match result {
+            Ok(new_status) => {
+                if let Some(status) = new_status {
+                    println!("WAD {} updated to status: {:?}", wad_record.uuid, status);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to sync WAD {}: {}", wad_record.uuid, e);
+                // Mark as failed
+                let db_conn = pool.get()?;
+                let _ = wallet::db::wad::update_wad_status(
+                    &db_conn, 
+                    &wad_record.uuid, 
+                    wallet::db::wad::WadStatus::Failed
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn sync_single_wad(
+    pool: Pool<SqliteConnectionManager>, 
+    wad_record: &wallet::db::wad::WadRecord
+) -> Result<Option<wallet::db::wad::WadStatus>> {
+    use node_client::{CheckStateRequest, ProofState};
+    
+    // Get proof public keys for this WAD
+    let proof_ys = {
+        let db_conn = pool.get()?;
+        wallet::db::wad::get_wad_proofs(&db_conn, &wad_record.uuid)?
+    };
+
+    if proof_ys.is_empty() {
+        return Ok(None);
+    }
+
+    // Parse the WAD data to get node information
+    let compact_wad: wallet::types::compact_wad::CompactWad<starknet_types::Unit> = 
+        serde_json::from_str(&wad_record.wad_data)?;
+
+    // Connect to the node
+    let mut node_client = wallet::connect_to_node(&compact_wad.node_url).await?;
+
+    // Check proof states using NUT-07
+    let check_request = CheckStateRequest {
+        ys: proof_ys.iter().map(|y| y.to_bytes().to_vec()).collect(),
+    };
+
+    let response = node_client.check_state(check_request).await?;
+    let states = response.into_inner().states;
+
+    // Analyze proof states to determine WAD status
+    let mut all_spent = true;
+    let mut any_spent = false;
+    let mut any_pending = false;
+
+    for state in states {
+        match ProofState::try_from(state.state)? {
+            ProofState::PsUnspent => {
+                all_spent = false;
+            }
+            ProofState::PsPending => {
+                all_spent = false;
+                any_pending = true;
+            }
+            ProofState::PsSpent => {
+                any_spent = true;
+            }
+            _ => {
+                all_spent = false;
+            }
+        }
+    }
+
+    // Determine new status based on proof states
+    let new_status = match (wad_record.wad_type.clone(), all_spent, any_spent, any_pending) {
+        // For outgoing WADs: if all proofs are spent, it's finished
+        (wallet::db::wad::WadType::Outgoing, true, _, _) => Some(wallet::db::wad::WadStatus::Finished),
+        // For incoming WADs: if any proofs are spent (received), it's finished  
+        (wallet::db::wad::WadType::Incoming, _, true, _) => Some(wallet::db::wad::WadStatus::Finished),
+        // If there are pending states, keep as pending
+        (_, _, _, true) => None, // Keep current status
+        // Otherwise, keep current status
+        _ => None,
+    };
+
+    // Update status if changed
+    if let Some(status) = &new_status {
+        let db_conn = pool.get()?;
+        wallet::db::wad::update_wad_status(&db_conn, &wad_record.uuid, status.clone())?;
+    }
+
+    Ok(new_status)
 }
