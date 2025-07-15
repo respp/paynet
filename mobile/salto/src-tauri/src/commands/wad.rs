@@ -183,3 +183,56 @@ pub async fn receive_wads(
 
     Ok(())
 }
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WadHistoryItem {
+    pub uuid: String,
+    pub wad_type: String,
+    pub status: String,
+    pub total_amount_json: String,
+    pub memo: Option<String>,
+    pub created_at: u64,
+    pub modified_at: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GetWadHistoryError {
+    #[error(transparent)]
+    R2D2(#[from] r2d2::Error),
+    #[error(transparent)]
+    Rusqlite(#[from] rusqlite::Error),
+}
+
+impl serde::Serialize for GetWadHistoryError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+pub async fn get_wad_history(
+    state: State<'_, AppState>,
+    limit: Option<u32>,
+) -> Result<Vec<WadHistoryItem>, GetWadHistoryError> {
+    let db_conn = state.pool.get()?;
+    let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit.unwrap_or(20))?;
+    
+    let history_items = wad_records
+        .into_iter()
+        .map(|record| WadHistoryItem {
+            uuid: record.uuid,
+            wad_type: record.wad_type.to_string(),
+            status: record.status.to_string(),
+            total_amount_json: record.total_amount_json,
+            memo: record.memo,
+            created_at: record.created_at,
+            modified_at: record.modified_at,
+        })
+        .collect();
+
+    Ok(history_items)
+}
