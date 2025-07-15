@@ -7,6 +7,7 @@ pub mod melt_quote;
 pub mod mint_quote;
 pub mod node;
 pub mod proof;
+pub mod wad;
 
 pub const CREATE_TABLE_KEY: &str = r#"
         CREATE TABLE IF NOT EXISTS key (
@@ -40,6 +41,45 @@ pub const CREATE_TABLE_MELT_QUOTE: &str = r#"
             transfer_ids TEXT
         );"#;
 
+pub const CREATE_TABLE_MELT_RESPONSE: &str = r#"
+        CREATE TABLE IF NOT EXISTS melt_response (
+            id BLOB (16) PRIMARY KEY,
+            node_id INTEGER NOT NULL REFERENCES node(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL,
+            fee INT2 NOT NULL,
+            state INT2 NOT NULL,
+            expiry INTEGER NOT NULL
+        )
+    "#;
+
+pub const CREATE_TABLE_WAD: &str = r#"
+        CREATE TABLE IF NOT EXISTS wad (
+            uuid TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK (type IN ('incoming', 'outgoing')),
+            status TEXT NOT NULL CHECK (status IN ('Pending', 'Cancelled', 'Finished', 'Failed')),
+            wad_data TEXT NOT NULL,
+            total_amount_json TEXT NOT NULL,
+            memo TEXT,
+            created_at INTEGER NOT NULL,
+            modified_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX wad_type ON wad(type);
+        CREATE INDEX wad_status ON wad(status);
+        CREATE INDEX wad_created_at ON wad(created_at);
+    "#;
+
+pub const CREATE_TABLE_WAD_PROOF: &str = r#"
+        CREATE TABLE IF NOT EXISTS wad_proof (
+            wad_uuid TEXT NOT NULL REFERENCES wad(uuid) ON DELETE CASCADE,
+            proof_y BLOB(33) NOT NULL REFERENCES proof(y) ON DELETE CASCADE,
+            PRIMARY KEY (wad_uuid, proof_y)
+        );
+
+        CREATE INDEX wad_proof_wad_uuid ON wad_proof(wad_uuid);
+        CREATE INDEX wad_proof_proof_y ON wad_proof(proof_y);
+    "#;
+
 pub fn create_tables(conn: &mut Connection) -> Result<()> {
     let tx = conn.transaction()?;
 
@@ -49,6 +89,8 @@ pub fn create_tables(conn: &mut Connection) -> Result<()> {
     tx.execute(CREATE_TABLE_MINT_QUOTE, ())?;
     tx.execute(CREATE_TABLE_MELT_QUOTE, ())?;
     tx.execute(proof::CREATE_TABLE_PROOF, ())?;
+    tx.execute(CREATE_TABLE_WAD, ())?;
+    tx.execute(CREATE_TABLE_WAD_PROOF, ())?;
 
     tx.commit()?;
 

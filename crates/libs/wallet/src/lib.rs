@@ -538,6 +538,67 @@ pub async fn receive_wad(
     Ok(total_amount)
 }
 
+pub async fn receive_wad_with_history<U: Unit + serde::Serialize>(
+    pool: Pool<SqliteConnectionManager>,
+    node_client: &mut NodeClient<Channel>,
+    node_id: u32,
+    node_url: &NodeUrl,
+    unit: U,
+    compact_keyset_proofs: Vec<CompactKeysetProofs>,
+    memo: Option<String>,
+) -> Result<Amount, Error> {
+    // Create CompactWad structure for history tracking
+    let compact_wad = CompactWad {
+        node_url: node_url.clone(),
+        unit,
+        memo,
+        proofs: compact_keyset_proofs.clone(),
+    };
+
+    // Extract proof public keys for tracking
+    let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs.iter()
+        .flat_map(|keyset_proof| &keyset_proof.proofs)
+        .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
+        .collect();
+    let proof_ys = proof_ys?;
+
+    // Generate UUID for WAD
+    let wad_uuid = uuid::Uuid::new_v4().to_string();
+
+    // Store incoming WAD in database
+    {
+        let db_conn = pool.get()?;
+        db::wad::insert_wad(
+            &db_conn,
+            &wad_uuid,
+            db::wad::WadType::Incoming,
+            &compact_wad,
+            &proof_ys,
+        )?;
+    }
+
+    // Process the actual receive operation
+    let total_amount = receive_wad(
+        pool.clone(),
+        node_client,
+        node_id,
+        unit.as_ref(),
+        compact_keyset_proofs,
+    ).await;
+
+    // Update WAD status based on receive result
+    {
+        let db_conn = pool.get()?;
+        let status = match &total_amount {
+            Ok(_) => db::wad::WadStatus::Finished,
+            Err(_) => db::wad::WadStatus::Failed,
+        };
+        db::wad::update_wad_status(&db_conn, &wad_uuid, status)?;
+    }
+
+    total_amount
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RegisterNodeError {
     #[error("failed connect to the node: {0}")]
@@ -693,4 +754,36 @@ pub fn create_wad_from_proofs<U: Unit>(
         memo,
         proofs: compact_proofs,
     }
+}
+
+pub fn create_wad_from_proofs_with_history<U: Unit + serde::Serialize>(
+    pool: Pool<SqliteConnectionManager>,
+    node_url: NodeUrl,
+    unit: U,
+    memo: Option<String>,
+    proofs: Vec<Proof>,
+) -> Result<CompactWad<U>, Error> {
+    // Extract proof public keys for tracking
+    let proof_ys: Result<Vec<_>, _> = proofs.iter()
+        .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
+        .collect();
+    let proof_ys = proof_ys?;
+    
+    // Create the WAD
+    let wad = create_wad_from_proofs(node_url, unit, memo, proofs);
+    
+    // Generate UUID for WAD
+    let wad_uuid = uuid::Uuid::new_v4().to_string();
+    
+    // Store in database
+    let db_conn = pool.get()?;
+    db::wad::insert_wad(
+        &db_conn, 
+        &wad_uuid, 
+        db::wad::WadType::Outgoing, 
+        &wad, 
+        &proof_ys
+    )?;
+    
+    Ok(wad)
 }
