@@ -16,10 +16,10 @@ pub fn run() {
         let builder = tauri::Builder::default();
 
         let builder = builder
+            .plugin(tauri_plugin_log::Builder::new().build())
             .plugin(tauri_plugin_os::init())
             .plugin(tauri_plugin_opener::init())
-            .plugin(tauri_plugin_log::Builder::new().build())
-            .plugin(tauri_plugin_os::init());
+            .plugin(tauri_plugin_clipboard_manager::init());
         #[cfg(mobile)]
         let builder = builder.plugin(tauri_plugin_nfc::init());
 
