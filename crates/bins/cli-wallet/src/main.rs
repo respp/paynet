@@ -144,6 +144,16 @@ enum Commands {
         long_about = "Decode a wad to print its contents in a friendly format"
     )]
     DecodeWad(WadArgs),
+    /// Show WAD history
+    #[command(
+        about = "Show WAD history",
+        long_about = "Display a history of all WADs (Wallet Anonymous Deposits) generated or received by the user"
+    )]
+    History {
+        /// Limit number of WADs to show
+        #[arg(long, short, default_value = "20")]
+        limit: u32,
+    },
     /// Sync all pending operations
     #[command(
         about = "Sync all pending mint and melt operations",
@@ -557,6 +567,32 @@ async fn main() -> Result<()> {
                 };
                 println!("\nDetailed Contents:");
                 println!("{}", serde_json::to_string_pretty(&regular_wad)?);
+            }
+        }
+        Commands::History { limit } => {
+            let db_conn = pool.get()?;
+            let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit)?;
+            
+            if wad_records.is_empty() {
+                println!("No WAD history found.");
+                return Ok(());
+            }
+
+            println!("WAD History (showing {} most recent):\n", wad_records.len());
+            
+            for wad_record in wad_records {
+                println!("UUID: {}", wad_record.uuid);
+                println!("Type: {}", wad_record.wad_type);
+                println!("Status: {}", wad_record.status);
+                println!("Total Amount: {}", wad_record.total_amount_json);
+                
+                if let Some(memo) = &wad_record.memo {
+                    println!("Memo: {}", memo);
+                }
+                
+                println!("Created: {} (unix timestamp)", wad_record.created_at);
+                println!("Modified: {} (unix timestamp)", wad_record.modified_at);
+                println!("---");
             }
         }
         Commands::Sync => {
