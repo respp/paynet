@@ -426,13 +426,42 @@ pub async fn swap_to_have_target_amount<U: Unit>(
     Ok(new_tokens)
 }
 
-pub async fn receive_wad(
+pub async fn receive_wad<U: Unit + serde::Serialize>(
     pool: Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,
     node_id: u32,
     unit: &str,
     compact_keyset_proofs: Vec<CompactKeysetProofs>,
+    // Optional parameters for history tracking
+    history_tracking: Option<(NodeUrl, U, Option<String>)>,
 ) -> Result<Amount, Error> {
+    // History tracking: store incoming WAD if requested
+    let wad_id = if let Some((node_url, unit_for_history, memo)) = &history_tracking {
+        let compact_wad = CompactWad {
+            node_url: node_url.clone(),
+            unit: unit_for_history.clone(),
+            memo: memo.clone(),
+            proofs: compact_keyset_proofs.clone(),
+        };
+
+        let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs
+            .iter()
+            .flat_map(|keyset_proof| &keyset_proof.proofs)
+            .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
+            .collect();
+        let proof_ys = proof_ys?;
+
+        let db_conn = pool.get()?;
+        Some(db::wad::register_wad(
+            &db_conn,
+            db::wad::WadType::IN,
+            &compact_wad,
+            &proof_ys,
+        )?)
+    } else {
+        None
+    };
+
     const INSERT_PROOF: &str = r#"
         INSERT INTO proof
             (y, node_id, keyset_id, amount, secret, unblind_signature, state)
@@ -535,70 +564,13 @@ pub async fn receive_wad(
 
     acknowledge(node_client, nuts::nut19::Route::Swap, swap_request_hash).await?;
 
+    // Update WAD status if history tracking is enabled
+    if let Some(wad_id) = wad_id {
+        let db_conn = pool.get()?;
+        db::wad::update_wad_status(&db_conn, wad_id, db::wad::WadStatus::Finished)?;
+    }
+
     Ok(total_amount)
-}
-
-pub async fn receive_wad_with_history<U: Unit + serde::Serialize>(
-    pool: Pool<SqliteConnectionManager>,
-    node_client: &mut NodeClient<Channel>,
-    node_id: u32,
-    node_url: &NodeUrl,
-    unit: U,
-    compact_keyset_proofs: Vec<CompactKeysetProofs>,
-    memo: Option<String>,
-) -> Result<Amount, Error> {
-    // Create CompactWad structure for history tracking
-    let compact_wad = CompactWad {
-        node_url: node_url.clone(),
-        unit,
-        memo,
-        proofs: compact_keyset_proofs.clone(),
-    };
-
-    // Extract proof public keys for tracking
-    let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs
-        .iter()
-        .flat_map(|keyset_proof| &keyset_proof.proofs)
-        .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
-        .collect();
-    let proof_ys = proof_ys?;
-
-    // Generate UUID for WAD
-    let wad_uuid = uuid::Uuid::new_v4().to_string();
-
-    // Store incoming WAD in database
-    {
-        let db_conn = pool.get()?;
-        db::wad::insert_wad(
-            &db_conn,
-            &wad_uuid,
-            db::wad::WadType::Incoming,
-            &compact_wad,
-            &proof_ys,
-        )?;
-    }
-
-    // Process the actual receive operation
-    let total_amount = receive_wad(
-        pool.clone(),
-        node_client,
-        node_id,
-        unit.as_ref(),
-        compact_keyset_proofs,
-    )
-    .await;
-
-    // Update WAD status based on receive result
-    {
-        let db_conn = pool.get()?;
-        let status = match &total_amount {
-            Ok(_) => db::wad::WadStatus::Finished,
-            Err(_) => db::wad::WadStatus::Failed,
-        };
-        db::wad::update_wad_status(&db_conn, &wad_uuid, status)?;
-    }
-
-    total_amount
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -729,14 +701,16 @@ pub async fn acknowledge(
     Ok(())
 }
 
-pub fn create_wad_from_proofs<U: Unit>(
+pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
     node_url: NodeUrl,
     unit: U,
     memo: Option<String>,
     proofs: Vec<Proof>,
-) -> CompactWad<U> {
+    // Optional parameter for history tracking
+    track_history: Option<Pool<SqliteConnectionManager>>,
+) -> Result<CompactWad<U>, Error> {
     let compact_proofs = proofs
-        .into_iter()
+        .iter()
         .chunk_by(|p| p.keyset_id)
         .into_iter()
         .map(|(keyset_id, proofs)| CompactKeysetProofs {
@@ -744,49 +718,36 @@ pub fn create_wad_from_proofs<U: Unit>(
             proofs: proofs
                 .map(|p| CompactProof {
                     amount: p.amount,
-                    secret: p.secret,
+                    secret: p.secret.clone(),
                     c: p.c,
                 })
                 .collect(),
         })
         .collect();
-    CompactWad {
+
+    let wad = CompactWad {
         node_url,
         unit,
         memo,
         proofs: compact_proofs,
+    };
+
+    // Store in database if history tracking is requested
+    if let Some(pool) = track_history {
+        let proof_ys: Result<Vec<_>, _> = proofs
+            .iter()
+            .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
+            .collect();
+        let proof_ys = proof_ys?;
+
+        let db_conn = pool.get()?;
+        let _wad_id = db::wad::register_wad(
+            &db_conn,
+            db::wad::WadType::OUT,
+            &wad,
+            &proof_ys,
+        )?;
     }
-}
-
-pub fn create_wad_from_proofs_with_history<U: Unit + serde::Serialize>(
-    pool: Pool<SqliteConnectionManager>,
-    node_url: NodeUrl,
-    unit: U,
-    memo: Option<String>,
-    proofs: Vec<Proof>,
-) -> Result<CompactWad<U>, Error> {
-    // Extract proof public keys for tracking
-    let proof_ys: Result<Vec<_>, _> = proofs
-        .iter()
-        .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
-        .collect();
-    let proof_ys = proof_ys?;
-
-    // Create the WAD
-    let wad = create_wad_from_proofs(node_url, unit, memo, proofs);
-
-    // Generate UUID for WAD
-    let wad_uuid = uuid::Uuid::new_v4().to_string();
-
-    // Store in database
-    let db_conn = pool.get()?;
-    db::wad::insert_wad(
-        &db_conn,
-        &wad_uuid,
-        db::wad::WadType::Outgoing,
-        &wad,
-        &proof_ys,
-    )?;
 
     Ok(wad)
 }
