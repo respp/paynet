@@ -454,8 +454,14 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                let wad =
-                    wallet::create_wad_from_proofs(node_url.clone(), unit, memo.clone(), proofs);
+                let wad = wallet::create_wad_from_proofs(
+                    node_url.clone(), 
+                    unit, 
+                    memo.clone(), 
+                    proofs,
+                    // Enable history tracking for CLI wallet
+                    Some(pool.clone()),
+                )?;
                 wads.push(wad);
             }
             if let Some(max_reached) = should_revert {
@@ -516,8 +522,10 @@ async fn main() -> Result<()> {
                     pool.clone(),
                     &mut node_client,
                     node_id,
-                    wad.unit.as_str(),
+                    unit.as_str(),
                     proofs,
+                    // Enable history tracking for CLI wallet
+                    Some((node_url.clone(), unit.clone(), memo.clone())),
                 )
                 .await
                 {
@@ -581,7 +589,7 @@ async fn main() -> Result<()> {
             println!("WAD History (showing {} most recent):\n", wad_records.len());
 
             for wad_record in wad_records {
-                println!("UUID: {}", wad_record.uuid);
+                println!("ID: {}", wad_record.id);
                 println!("Type: {}", wad_record.wad_type);
                 println!("Status: {}", wad_record.status);
                 println!("Total Amount: {}", wad_record.total_amount_json);
