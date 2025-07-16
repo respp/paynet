@@ -4732,7 +4732,6 @@ name = "salto"
 version = "0.1.0"
 dependencies = [
  "dirs",
- "log",
  "num-traits",
  "nuts",
  "primitive-types 0.13.1",
