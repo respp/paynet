@@ -9,7 +9,7 @@
   let { onClose }: Props = $props();
 
   interface WadHistoryItem {
-    uuid: string;
+    id: number;
     wadType: string;
     status: string;
     totalAmountJson: string;
@@ -131,7 +131,7 @@
               {/if}
               
               <div class="wad-details">
-                <div class="wad-uuid">ID: {wad.uuid.substring(0, 8)}...</div>
+                                            <div class="wad-id">ID: {wad.id}</div>
                 <div class="wad-time">
                   Created: {formatTimestamp(wad.createdAt)}
                 </div>

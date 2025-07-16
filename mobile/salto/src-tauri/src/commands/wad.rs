@@ -102,7 +102,14 @@ pub async fn create_wads(
 
         let db_conn = state.pool.get()?;
         let proofs = wallet::load_tokens_from_db(&db_conn, &proofs_ids)?;
-        let wad = wallet::create_wad_from_proofs(node_url, unit, None, proofs);
+        let wad = wallet::create_wad_from_proofs(
+            node_url, 
+            unit, 
+            None, 
+            proofs,
+            // Enable history tracking for mobile app
+            Some(state.pool.clone()),
+        )?;
         wads.push(wad);
         balance_decrease_events.push(BalanceChange {
             node_id,
@@ -168,6 +175,8 @@ pub async fn receive_wads(
             node_id,
             wad.unit.as_str(),
             wad.proofs,
+            // Enable history tracking for mobile app
+            Some((wad.node_url.clone(), wad.unit, wad.memo.clone())),
         )
         .await?;
 
@@ -187,7 +196,7 @@ pub async fn receive_wads(
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WadHistoryItem {
-    pub uuid: String,
+    pub id: i64,
     pub wad_type: String,
     pub status: String,
     pub total_amount_json: String,
@@ -224,7 +233,7 @@ pub async fn get_wad_history(
     let history_items = wad_records
         .into_iter()
         .map(|record| WadHistoryItem {
-            uuid: record.uuid,
+            id: record.id,
             wad_type: record.wad_type.to_string(),
             status: record.status.to_string(),
             total_amount_json: record.total_amount_json,
