@@ -26,10 +26,10 @@ pub fn run() {
 
         builder
             .setup(|app| {
-                // Use the same database path as the CLI wallet
+                // Use separate database for mobile app
                 let db_path = dirs::data_dir()
                     .map(|mut dp| {
-                        dp.push("cli-wallet.sqlite3");
+                        dp.push("salto-wallet.sqlite3");
                         dp
                     })
                     .expect("dirs::data_dir should map to a valid path on this machine");
