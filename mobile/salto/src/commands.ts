@@ -65,7 +65,7 @@ export async function receive_wads(wads: string) {
 }
 
 export interface WadHistoryItem {
-  uuid: string;
+  id: number;
   wadType: string;
   status: string;
   totalAmountJson: string;
