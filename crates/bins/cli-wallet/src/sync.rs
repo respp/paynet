@@ -214,7 +214,7 @@ async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
                 let db_conn = pool.get()?;
                 let _ = wallet::db::wad::update_wad_status(
                     &db_conn,
-                    wad_record.id,
+                    &wad_record.id,
                     wallet::db::wad::WadStatus::Failed,
                 );
             }
@@ -233,11 +233,14 @@ async fn sync_single_wad(
     // Get proof public keys for this WAD
     let proof_ys = {
         let db_conn = pool.get()?;
-        wallet::db::wad::get_wad_proofs(&db_conn, wad_record.id)?
+        wallet::db::wad::get_wad_proofs(&db_conn, &wad_record.id)?
     };
 
     if proof_ys.is_empty() {
-        tracing::warn!("Empty WAD found (ID: {}), this should not occur", wad_record.id);
+        tracing::warn!(
+            "Empty WAD found (ID: {}), this should not occur",
+            wad_record.id
+        );
         return Ok(None);
     }
 
@@ -268,7 +271,11 @@ async fn sync_single_wad(
                 // Nothing to do - this maintains all_spent = true if all others are spent
             }
             _ => {
-                return Err(anyhow!("Unexpected proof state encountered for WAD {}: {:?}", wad_record.id, state.state));
+                return Err(anyhow!(
+                    "Unexpected proof state encountered for WAD {}: {:?}",
+                    wad_record.id,
+                    state.state
+                ));
             }
         }
     }
@@ -278,7 +285,10 @@ async fn sync_single_wad(
         wallet::db::wad::WadType::OUT => {
             // For outgoing WADs, finished when all proofs are spent
             if all_spent {
-                tracing::info!("WAD {} all proofs spent, marking as Finished", wad_record.id);
+                tracing::info!(
+                    "WAD {} all proofs spent, marking as Finished",
+                    wad_record.id
+                );
                 Some(wallet::db::wad::WadStatus::Finished)
             } else {
                 tracing::info!("WAD {} some proofs not spent yet", wad_record.id);
@@ -288,7 +298,10 @@ async fn sync_single_wad(
         wallet::db::wad::WadType::IN => {
             // For incoming WADs, finished when all proofs are received (spent in our wallet)
             if all_spent {
-                tracing::info!("WAD {} all proofs received, marking as Finished", wad_record.id);
+                tracing::info!(
+                    "WAD {} all proofs received, marking as Finished",
+                    wad_record.id
+                );
                 Some(wallet::db::wad::WadStatus::Finished)
             } else {
                 tracing::info!("WAD {} not all proofs received yet", wad_record.id);
@@ -300,7 +313,7 @@ async fn sync_single_wad(
     // Update status if changed
     if let Some(status) = &new_status {
         let db_conn = pool.get()?;
-        wallet::db::wad::update_wad_status(&db_conn, wad_record.id, status.clone())?;
+        wallet::db::wad::update_wad_status(&db_conn, &wad_record.id, *status)?;
     }
 
     Ok(new_status)

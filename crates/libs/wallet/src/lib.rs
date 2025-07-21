@@ -432,14 +432,15 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
     node_id: u32,
     unit: &str,
     compact_keyset_proofs: Vec<CompactKeysetProofs>,
-    // Optional parameters for history tracking
-    history_tracking: Option<(NodeUrl, U, Option<String>)>,
+    // Parameters for history tracking
+    history_tracking: (NodeUrl, U, Option<String>),
 ) -> Result<Amount, Error> {
-    // History tracking: store incoming WAD if requested
-    let wad_id = if let Some((node_url, unit_for_history, memo)) = &history_tracking {
+    // History tracking: store incoming WAD
+    let (node_url, unit_for_history, memo) = &history_tracking;
+    let wad_id = {
         let compact_wad = CompactWad {
             node_url: node_url.clone(),
-            unit: unit_for_history.clone(),
+            unit: *unit_for_history,
             memo: memo.clone(),
             proofs: compact_keyset_proofs.clone(),
         };
@@ -452,14 +453,7 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         let proof_ys = proof_ys?;
 
         let db_conn = pool.get()?;
-        Some(db::wad::register_wad(
-            &db_conn,
-            db::wad::WadType::IN,
-            &compact_wad,
-            &proof_ys,
-        )?)
-    } else {
-        None
+        db::wad::register_wad(&db_conn, db::wad::WadType::IN, &compact_wad, &proof_ys)?
     };
 
     const INSERT_PROOF: &str = r#"
@@ -564,11 +558,9 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
 
     acknowledge(node_client, nuts::nut19::Route::Swap, swap_request_hash).await?;
 
-    // Update WAD status if history tracking is enabled
-    if let Some(wad_id) = wad_id {
-        let db_conn = pool.get()?;
-        db::wad::update_wad_status(&db_conn, wad_id, db::wad::WadStatus::Finished)?;
-    }
+    // Update WAD status
+    let db_conn = pool.get()?;
+    db::wad::update_wad_status(&db_conn, &wad_id, db::wad::WadStatus::Finished)?;
 
     Ok(total_amount)
 }
@@ -741,12 +733,7 @@ pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
         let proof_ys = proof_ys?;
 
         let db_conn = pool.get()?;
-        let _wad_id = db::wad::register_wad(
-            &db_conn,
-            db::wad::WadType::OUT,
-            &wad,
-            &proof_ys,
-        )?;
+        let _wad_id = db::wad::register_wad(&db_conn, db::wad::WadType::OUT, &wad, &proof_ys)?;
     }
 
     Ok(wad)

@@ -20,15 +20,18 @@ use crate::common::{
     utils::{EnvVariables, starknet::pay_invoices},
 };
 
-type Pool = r2d2::Pool<SqliteConnectionManager>;
 pub struct WalletOps {
-    db_pool: Pool,
+    db_pool: r2d2::Pool<SqliteConnectionManager>,
     node_id: u32,
     node_client: NodeClient<Channel>,
 }
 
 impl WalletOps {
-    pub fn new(db_pool: Pool, node_id: u32, node_client: NodeClient<Channel>) -> Self {
+    pub fn new(
+        db_pool: r2d2::Pool<SqliteConnectionManager>,
+        node_id: u32,
+        node_client: NodeClient<Channel>,
+    ) -> Self {
         WalletOps {
             db_pool,
             node_id,
@@ -141,8 +144,8 @@ impl WalletOps {
             self.node_id,
             wad.unit.as_str(),
             wad.proofs.clone(),
-            // No history tracking for tests
-            None,
+            // History tracking for tests
+            (wad.node_url.clone(), wad.unit, wad.memo.clone()),
         )
         .await?;
         Ok(())
@@ -203,5 +206,113 @@ impl WalletOps {
         }
 
         Ok(())
+    }
+
+    pub async fn sync_single_wad(
+        pool: r2d2::Pool<SqliteConnectionManager>,
+        wad_record: &wallet::db::wad::WadRecord,
+    ) -> Result<Option<wallet::db::wad::WadStatus>> {
+        use node_client::{CheckStateRequest, ProofState};
+
+        // Get proof public keys for this WAD
+        let proof_ys = {
+            let db_conn = pool.get()?;
+            wallet::db::wad::get_wad_proofs(&db_conn, &wad_record.id)?
+        };
+
+        if proof_ys.is_empty() {
+            log::warn!(
+                "Empty WAD found (ID: {}), this should not occur",
+                wad_record.id
+            );
+            return Ok(None);
+        }
+
+        // Parse the WAD data to get node information
+        let compact_wad: wallet::types::compact_wad::CompactWad<starknet_types::Unit> =
+            serde_json::from_str(&wad_record.wad_data)?;
+
+        // Connect to the node
+        let mut node_client = wallet::connect_to_node(&compact_wad.node_url).await?;
+
+        // Check proof states using NUT-07
+        let check_request = CheckStateRequest {
+            ys: proof_ys.iter().map(|y| y.to_bytes().to_vec()).collect(),
+        };
+
+        let response = node_client.check_state(check_request).await?;
+        let states = response.into_inner().states;
+
+        // Analyze proof states to determine WAD status
+        let mut all_spent = true;
+        let mut any_spent = false;
+
+        for state in states {
+            match ProofState::try_from(state.state)? {
+                ProofState::PsUnspent | ProofState::PsPending => {
+                    all_spent = false;
+                }
+                ProofState::PsSpent => {
+                    any_spent = true;
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "Unexpected proof state encountered for WAD {}: {:?}",
+                        wad_record.id,
+                        state.state
+                    )
+                    .into());
+                }
+            }
+        }
+
+        // Determine new status based on proof states
+        let new_status = match wad_record.wad_type {
+            wallet::db::wad::WadType::OUT => {
+                // For outgoing WADs, finished when all proofs are spent
+                if all_spent {
+                    log::info!(
+                        "WAD {} all proofs spent, marking as Finished",
+                        wad_record.id
+                    );
+                    Some(wallet::db::wad::WadStatus::Finished)
+                } else if any_spent {
+                    log::info!(
+                        "WAD {} some proofs spent, marking as Partial",
+                        wad_record.id
+                    );
+                    Some(wallet::db::wad::WadStatus::Partial)
+                } else {
+                    log::info!("WAD {} no proofs spent yet", wad_record.id);
+                    None
+                }
+            }
+            wallet::db::wad::WadType::IN => {
+                // For incoming WADs, finished when all proofs are received (spent in our wallet)
+                if all_spent {
+                    log::info!(
+                        "WAD {} all proofs received, marking as Finished",
+                        wad_record.id
+                    );
+                    Some(wallet::db::wad::WadStatus::Finished)
+                } else if any_spent {
+                    log::info!(
+                        "WAD {} some proofs received, marking as Partial",
+                        wad_record.id
+                    );
+                    Some(wallet::db::wad::WadStatus::Partial)
+                } else {
+                    log::info!("WAD {} not all proofs received yet", wad_record.id);
+                    None
+                }
+            }
+        };
+
+        if let Some(status) = new_status {
+            let db_conn = pool.get()?;
+            wallet::db::wad::update_wad_status(&db_conn, &wad_record.id, status)?;
+        }
+
+        Ok(new_status)
     }
 }

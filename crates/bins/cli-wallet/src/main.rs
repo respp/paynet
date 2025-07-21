@@ -455,9 +455,9 @@ async fn main() -> Result<()> {
                 };
 
                 let wad = wallet::create_wad_from_proofs(
-                    node_url.clone(), 
-                    unit, 
-                    memo.clone(), 
+                    node_url.clone(),
+                    unit,
+                    memo.clone(),
                     proofs,
                     // Enable history tracking for CLI wallet
                     Some(pool.clone()),
@@ -525,7 +525,7 @@ async fn main() -> Result<()> {
                     unit.as_str(),
                     proofs,
                     // Enable history tracking for CLI wallet
-                    Some((node_url.clone(), unit.clone(), memo.clone())),
+                    (node_url.clone(), unit, memo.clone()),
                 )
                 .await
                 {
