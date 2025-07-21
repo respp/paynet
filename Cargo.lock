@@ -4495,6 +4495,7 @@ dependencies = [
  "node-client",
  "nuts",
  "primitive-types 0.13.1",
+ "prost 0.13.5",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",
