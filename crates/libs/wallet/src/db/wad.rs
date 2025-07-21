@@ -1,8 +1,12 @@
 use crate::types::compact_wad::CompactWad;
 use nuts::nut01::PublicKey;
 use nuts::traits::Unit;
-use rusqlite::{Connection, Result, params, ToSql, types::{ValueRef, ToSqlOutput, FromSqlResult, FromSqlError, FromSql}};
+use rusqlite::{
+    Connection, Result, ToSql, params,
+    types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
+};
 use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
 pub enum WadType {
@@ -44,6 +48,7 @@ pub enum WadStatus {
     Cancelled,
     Finished,
     Failed,
+    Partial,
 }
 
 impl ToSql for WadStatus {
@@ -53,6 +58,7 @@ impl ToSql for WadStatus {
             WadStatus::Cancelled => Ok(ToSqlOutput::from("CANCELLED")),
             WadStatus::Finished => Ok(ToSqlOutput::from("FINISHED")),
             WadStatus::Failed => Ok(ToSqlOutput::from("FAILED")),
+            WadStatus::Partial => Ok(ToSqlOutput::from("PARTIAL")),
         }
     }
 }
@@ -64,6 +70,7 @@ impl FromSql for WadStatus {
             "CANCELLED" => Ok(WadStatus::Cancelled),
             "FINISHED" => Ok(WadStatus::Finished),
             "FAILED" => Ok(WadStatus::Failed),
+            "PARTIAL" => Ok(WadStatus::Partial),
             _ => Err(FromSqlError::InvalidType),
         }
     }
@@ -76,13 +83,14 @@ impl std::fmt::Display for WadStatus {
             WadStatus::Cancelled => write!(f, "CANCELLED"),
             WadStatus::Finished => write!(f, "FINISHED"),
             WadStatus::Failed => write!(f, "FAILED"),
+            WadStatus::Partial => write!(f, "PARTIAL"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct WadRecord {
-    pub id: i64,
+    pub id: String,
     pub wad_type: WadType,
     pub status: WadStatus,
     pub wad_data: String,          // JSON string of CompactWad
@@ -97,7 +105,8 @@ pub fn register_wad<U: Unit + serde::Serialize>(
     wad_type: WadType,
     wad: &CompactWad<U>,
     proof_ys: &[PublicKey],
-) -> Result<i64> {
+) -> Result<String> {
+    let wad_id = Uuid::new_v4().to_string();
     let wad_data = serde_json::to_string(wad)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
@@ -115,13 +124,14 @@ pub fn register_wad<U: Unit + serde::Serialize>(
 
     const INSERT_WAD: &str = r#"
         INSERT INTO wad 
-            (type, status, wad_data, total_amount_json, memo, created_at, modified_at)
+            (id, type, status, wad_data, total_amount_json, memo, created_at, modified_at)
         VALUES 
-            (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
     "#;
 
     let mut stmt = conn.prepare(INSERT_WAD)?;
     stmt.execute(params![
+        wad_id,
         wad_type,
         WadStatus::Pending,
         wad_data,
@@ -130,8 +140,6 @@ pub fn register_wad<U: Unit + serde::Serialize>(
         now,
         now,
     ])?;
-
-    let wad_id = conn.last_insert_rowid();
 
     // Insert WAD-proof relationships
     const INSERT_WAD_PROOF: &str = r#"
@@ -174,7 +182,7 @@ pub fn get_recent_wads(conn: &Connection, limit: u32) -> Result<Vec<WadRecord>> 
     rows.collect::<Result<Vec<_>, _>>()
 }
 
-pub fn update_wad_status(conn: &Connection, wad_id: i64, status: WadStatus) -> Result<()> {
+pub fn update_wad_status(conn: &Connection, wad_id: &str, status: WadStatus) -> Result<()> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -206,7 +214,7 @@ pub fn get_pending_wads(conn: &Connection) -> Result<Vec<WadRecord>> {
     rows.collect::<Result<Vec<_>, _>>()
 }
 
-pub fn get_wad_proofs(conn: &Connection, wad_id: i64) -> Result<Vec<PublicKey>> {
+pub fn get_wad_proofs(conn: &Connection, wad_id: &str) -> Result<Vec<PublicKey>> {
     const GET_WAD_PROOFS: &str = r#"
         SELECT proof_y FROM wad_proof WHERE wad_id = ?1
     "#;
