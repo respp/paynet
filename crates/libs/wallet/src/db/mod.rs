@@ -41,13 +41,11 @@ pub const CREATE_TABLE_MELT_QUOTE: &str = r#"
             transfer_ids TEXT
         );"#;
 
-
-
 pub const CREATE_TABLE_WAD: &str = r#"
         CREATE TABLE IF NOT EXISTS wad (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id TEXT PRIMARY KEY,
             type TEXT NOT NULL CHECK (type IN ('IN', 'OUT')),
-            status TEXT NOT NULL CHECK (status IN ('PENDING', 'CANCELLED', 'FINISHED', 'FAILED')),
+            status TEXT NOT NULL CHECK (status IN ('PENDING', 'CANCELLED', 'FINISHED', 'FAILED', 'PARTIAL')),
             wad_data TEXT NOT NULL,
             total_amount_json TEXT NOT NULL,
             memo TEXT,
@@ -62,7 +60,7 @@ pub const CREATE_TABLE_WAD: &str = r#"
 
 pub const CREATE_TABLE_WAD_PROOF: &str = r#"
         CREATE TABLE IF NOT EXISTS wad_proof (
-            wad_id INTEGER NOT NULL REFERENCES wad(id) ON DELETE CASCADE,
+            wad_id TEXT NOT NULL REFERENCES wad(id) ON DELETE CASCADE,
             proof_y BLOB(33) NOT NULL REFERENCES proof(y) ON DELETE CASCADE,
             PRIMARY KEY (wad_id, proof_y)
         );
