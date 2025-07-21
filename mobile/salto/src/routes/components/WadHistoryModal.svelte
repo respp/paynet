@@ -302,11 +302,6 @@
     line-height: 1.4;
   }
 
-  .wad-uuid {
-    font-family: monospace;
-    margin-bottom: 4px;
-  }
-
   .modal-footer {
     padding: 20px;
     border-top: 1px solid #eee;

@@ -64,14 +64,27 @@ export async function receive_wads(wads: string) {
       return res;
 }
 
+export enum WadType {
+    IN = "IN",
+    OUT = "OUT",
+}
+
+export enum WadStatus {
+    PENDING = "PENDING",
+    CANCELLED = "CANCELLED",
+    FINISHED = "FINISHED",
+    FAILED = "FAILED",
+    PARTIAL = "PARTIAL",
+}
+
 export interface WadHistoryItem {
-  id: number;
-  wadType: string;
-  status: string;
-  totalAmountJson: string;
-  memo?: string;
-  createdAt: number;
-  modifiedAt: number;
+    id: string;  // Changed from number to string for UUID
+    wadType: WadType;
+    status: WadStatus;
+    totalAmountJson: string;
+    memo?: string;
+    createdAt: number;
+    modifiedAt: number;
 }
 
 export async function get_wad_history(limit?: number): Promise<WadHistoryItem[] | undefined> {
