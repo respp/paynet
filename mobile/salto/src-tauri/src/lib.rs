@@ -26,8 +26,10 @@ pub fn run() {
 
         builder
             .setup(|app| {
-                // Use separate database for mobile app
-                let db_path = dirs::data_dir()
+                let db_path = app
+                    .handle()
+                    .path()
+                    .app_data_dir()
                     .map(|mut dp| {
                         dp.push("salto-wallet.sqlite3");
                         dp
@@ -40,7 +42,7 @@ pub fn run() {
             })
             .plugin(
                 tauri_plugin_sql::Builder::default()
-                    .add_migrations("sqlite:cli-wallet.sqlite3", migrations::migrations())
+                    .add_migrations("sqlite:salto-wallet.sqlite3", migrations::migrations())
                     .build(),
             )
             .invoke_handler(tauri::generate_handler![
