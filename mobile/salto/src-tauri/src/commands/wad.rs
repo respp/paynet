@@ -175,8 +175,7 @@ pub async fn receive_wads(
             node_id,
             wad.unit.as_str(),
             wad.proofs,
-            // Enable history tracking for mobile app
-            Some((wad.node_url.clone(), wad.unit, wad.memo.clone())),
+            (wad.node_url.clone(), wad.unit, wad.memo.clone()),
         )
         .await?;
 
