@@ -511,14 +511,7 @@ async fn main() -> Result<()> {
                 let (mut node_client, node_id) =
                     wallet::register_node(pool.clone(), &wad.node_url).await?;
 
-                match wallet::receive_wad(
-                    pool.clone(),
-                    &mut node_client,
-                    node_id,
-                    &wad,
-                )
-                .await
-                {
+                match wallet::receive_wad(pool.clone(), &mut node_client, node_id, &wad).await {
                     Ok(a) => {
                         println!("Received tokens on node `{}`", node_id);
                         if let Some(memo) = wad.memo() {
@@ -580,8 +573,14 @@ async fn main() -> Result<()> {
 
             for wad_record in wad_records {
                 println!("ID: {}", wad_record.id);
-                println!("Type: {} | Status: {} | Total Amount: {}", wad_record.wad_type, wad_record.status, wad_record.total_amount_json);
-                println!("Created: {} | Modified: {}", wad_record.created_at, wad_record.modified_at);
+                println!(
+                    "Type: {} | Status: {} | Total Amount: {}",
+                    wad_record.wad_type, wad_record.status, wad_record.total_amount_json
+                );
+                println!(
+                    "Created: {} | Modified: {}",
+                    wad_record.created_at, wad_record.modified_at
+                );
                 if let Some(memo) = &wad_record.memo {
                     println!("Memo: {}", memo);
                 }

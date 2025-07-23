@@ -434,7 +434,8 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
 ) -> Result<Amount, Error> {
     // History tracking: store incoming WAD
     let wad_id = {
-        let proof_ys: Result<Vec<_>, _> = wad.proofs
+        let proof_ys: Result<Vec<_>, _> = wad
+            .proofs
             .iter()
             .flat_map(|keyset_proof| &keyset_proof.proofs)
             .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
@@ -467,7 +468,10 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         )
         .await?;
         if keyset_unit != wad.unit.as_ref() {
-            return Err(Error::UnitMissmatch(keyset_unit, wad.unit.as_ref().to_string()));
+            return Err(Error::UnitMissmatch(
+                keyset_unit,
+                wad.unit.as_ref().to_string(),
+            ));
         }
 
         for compact_proof in compact_keyset_proof.proofs.iter() {
