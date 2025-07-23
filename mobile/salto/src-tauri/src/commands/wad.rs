@@ -107,8 +107,7 @@ pub async fn create_wads(
             unit,
             None,
             proofs,
-            // Enable history tracking for mobile app
-            Some(state.pool.clone()),
+            state.pool.clone(),
         )?;
         wads.push(wad);
         balance_decrease_events.push(BalanceChange {
@@ -173,11 +172,8 @@ pub async fn receive_wads(
             state.pool.clone(),
             &mut node_client,
             node_id,
-            wad.unit.as_str(),
-            wad.proofs,
-            (wad.node_url.clone(), wad.unit, wad.memo.clone()),
-        )
-        .await?;
+            &wad,
+        ).await?;
 
         app.emit(
             "balance-increase",

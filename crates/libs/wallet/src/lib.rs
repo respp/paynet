@@ -430,22 +430,11 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
     pool: Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,
     node_id: u32,
-    unit: &str,
-    compact_keyset_proofs: Vec<CompactKeysetProofs>,
-    // Parameters for history tracking
-    history_tracking: (NodeUrl, U, Option<String>),
+    wad: &CompactWad<U>,
 ) -> Result<Amount, Error> {
     // History tracking: store incoming WAD
-    let (node_url, unit_for_history, memo) = &history_tracking;
     let wad_id = {
-        let compact_wad = CompactWad {
-            node_url: node_url.clone(),
-            unit: *unit_for_history,
-            memo: memo.clone(),
-            proofs: compact_keyset_proofs.clone(),
-        };
-
-        let proof_ys: Result<Vec<_>, _> = compact_keyset_proofs
+        let proof_ys: Result<Vec<_>, _> = wad.proofs
             .iter()
             .flat_map(|keyset_proof| &keyset_proof.proofs)
             .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
@@ -453,7 +442,7 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         let proof_ys = proof_ys?;
 
         let db_conn = pool.get()?;
-        db::wad::register_wad(&db_conn, db::wad::WadType::IN, &compact_wad, &proof_ys)?
+        db::wad::register_wad(&db_conn, db::wad::WadType::IN, wad, &proof_ys)?
     };
 
     const INSERT_PROOF: &str = r#"
@@ -464,12 +453,12 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         ON CONFLICT DO UPDATE
             SET state = excluded.state
     "#;
-    let mut ys = Vec::with_capacity(compact_keyset_proofs.len());
+    let mut ys = Vec::with_capacity(wad.proofs.len());
     let mut total_amount = Amount::ZERO;
-    let mut inputs = Vec::with_capacity(compact_keyset_proofs.len());
-    let mut stmt_params = Vec::with_capacity(compact_keyset_proofs.len());
+    let mut inputs = Vec::with_capacity(wad.proofs.len());
+    let mut stmt_params = Vec::with_capacity(wad.proofs.len());
 
-    for compact_keyset_proof in compact_keyset_proofs.into_iter() {
+    for compact_keyset_proof in wad.proofs.iter() {
         let (keyset_unit, max_order) = read_or_import_node_keyset(
             pool.clone(),
             node_client,
@@ -477,11 +466,11 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
             compact_keyset_proof.keyset_id,
         )
         .await?;
-        if keyset_unit != unit {
-            return Err(Error::UnitMissmatch(keyset_unit, unit.to_string()));
+        if keyset_unit != wad.unit.as_ref() {
+            return Err(Error::UnitMissmatch(keyset_unit, wad.unit.as_ref().to_string()));
         }
 
-        for compact_proof in compact_keyset_proof.proofs.into_iter() {
+        for compact_proof in compact_keyset_proof.proofs.iter() {
             let amount = u64::from(compact_proof.amount);
             if !amount.is_power_of_two() || amount == 0 {
                 return Err(Error::Protocol(
@@ -512,7 +501,7 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
                 node_id,
                 compact_keyset_proof.keyset_id,
                 compact_proof.amount,
-                compact_proof.secret,
+                compact_proof.secret.clone(),
                 compact_proof.c,
                 ProofState::Pending,
             ));
@@ -524,7 +513,7 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         for params in stmt_params {
             insert_proof_stmt.execute(params)?;
         }
-        get_active_keyset_for_unit(&db_conn, node_id, unit)?
+        get_active_keyset_for_unit(&db_conn, node_id, wad.unit.as_ref())?
     };
 
     let pre_mints = PreMint::generate_for_amount(total_amount, &SplitTarget::None)?;
@@ -698,8 +687,7 @@ pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
     unit: U,
     memo: Option<String>,
     proofs: Vec<Proof>,
-    // Optional parameter for history tracking
-    track_history: Option<Pool<SqliteConnectionManager>>,
+    track_history: Pool<SqliteConnectionManager>,
 ) -> Result<CompactWad<U>, Error> {
     let compact_proofs = proofs
         .iter()
@@ -724,17 +712,15 @@ pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
         proofs: compact_proofs,
     };
 
-    // Store in database if history tracking is requested
-    if let Some(pool) = track_history {
-        let proof_ys: Result<Vec<_>, _> = proofs
-            .iter()
-            .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
-            .collect();
-        let proof_ys = proof_ys?;
+    // Store in database for history tracking
+    let proof_ys: Result<Vec<_>, _> = proofs
+        .iter()
+        .map(|p| nuts::dhke::hash_to_curve(p.secret.as_ref()))
+        .collect();
+    let proof_ys = proof_ys?;
 
-        let db_conn = pool.get()?;
-        let _wad_id = db::wad::register_wad(&db_conn, db::wad::WadType::OUT, &wad, &proof_ys)?;
-    }
+    let db_conn = track_history.get()?;
+    let _wad_id = db::wad::register_wad(&db_conn, db::wad::WadType::OUT, &wad, &proof_ys)?;
 
     Ok(wad)
 }

@@ -142,10 +142,7 @@ impl WalletOps {
             self.db_pool.clone(),
             &mut self.node_client,
             self.node_id,
-            wad.unit.as_str(),
-            wad.proofs.clone(),
-            // History tracking for tests
-            (wad.node_url.clone(), wad.unit, wad.memo.clone()),
+            wad,
         )
         .await?;
         Ok(())

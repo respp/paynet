@@ -459,8 +459,7 @@ async fn main() -> Result<()> {
                     unit,
                     memo.clone(),
                     proofs,
-                    // Enable history tracking for CLI wallet
-                    Some(pool.clone()),
+                    pool.clone(),
                 )?;
                 wads.push(wad);
             }
@@ -511,35 +510,26 @@ async fn main() -> Result<()> {
             for wad in wads {
                 let (mut node_client, node_id) =
                     wallet::register_node(pool.clone(), &wad.node_url).await?;
-                let CompactWad {
-                    node_url,
-                    unit,
-                    memo,
-                    proofs,
-                } = wad;
 
                 match wallet::receive_wad(
                     pool.clone(),
                     &mut node_client,
                     node_id,
-                    unit.as_str(),
-                    proofs,
-                    // Enable history tracking for CLI wallet
-                    (node_url.clone(), unit, memo.clone()),
+                    &wad,
                 )
                 .await
                 {
                     Ok(a) => {
                         println!("Received tokens on node `{}`", node_id);
-                        if let Some(memo) = memo {
+                        if let Some(memo) = wad.memo() {
                             println!("Memo: {}", memo);
                         }
-                        println!("{} {}", a, unit.as_str());
+                        println!("{} {}", a, wad.unit());
                     }
                     Err(e) => {
                         println!(
                             "failed to receive_wad from node {} ({}): {}",
-                            node_id, node_url, e
+                            node_id, wad.node_url, e
                         );
                         continue;
                     }
@@ -590,16 +580,11 @@ async fn main() -> Result<()> {
 
             for wad_record in wad_records {
                 println!("ID: {}", wad_record.id);
-                println!("Type: {}", wad_record.wad_type);
-                println!("Status: {}", wad_record.status);
-                println!("Total Amount: {}", wad_record.total_amount_json);
-
+                println!("Type: {} | Status: {} | Total Amount: {}", wad_record.wad_type, wad_record.status, wad_record.total_amount_json);
+                println!("Created: {} | Modified: {}", wad_record.created_at, wad_record.modified_at);
                 if let Some(memo) = &wad_record.memo {
                     println!("Memo: {}", memo);
                 }
-
-                println!("Created: {} (unix timestamp)", wad_record.created_at);
-                println!("Modified: {} (unix timestamp)", wad_record.modified_at);
                 println!("---");
             }
         }

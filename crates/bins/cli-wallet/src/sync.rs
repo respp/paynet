@@ -210,13 +210,8 @@ async fn sync_pending_wads(pool: Pool<SqliteConnectionManager>) -> Result<()> {
             }
             Err(e) => {
                 eprintln!("Failed to sync WAD {}: {}", wad_record.id, e);
-                // Mark as failed
-                let db_conn = pool.get()?;
-                let _ = wallet::db::wad::update_wad_status(
-                    &db_conn,
-                    &wad_record.id,
-                    wallet::db::wad::WadStatus::Failed,
-                );
+                // Continue without updating the state - this could be a temporary network issue
+                // We'll attempt to sync this WAD again in future sync operations
             }
         }
     }

@@ -9,7 +9,7 @@
   let { onClose }: Props = $props();
 
   interface WadHistoryItem {
-    id: number;
+    id: string;
     wadType: string;
     status: string;
     totalAmountJson: string;
@@ -31,14 +31,12 @@
       loading = true;
       error = "";
       
-      console.log("Fetching WAD history...");
       const history = await get_wad_history(20);
-      console.log("WAD history received:", history);
       
       wadHistory = history || [];
     } catch (err) {
-      console.error("Failed to load WAD history:", err);
-      error = "Failed to load WAD history: " + String(err);
+      console.error("Failed to load transfer history:", err);
+      error = "Failed to load transfer history: " + String(err);
     } finally {
       loading = false;
     }
@@ -53,6 +51,10 @@
       const parsed = JSON.parse(amountJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
         const [unit, amount] = Object.entries(parsed[0])[0];
+        if (unit === "millistark" || unit === "millistrk") {
+          const strkAmount = Number(amount) / 1000;
+          return `${strkAmount} strk`;
+        }
         return `${amount} ${unit}`;
       }
     } catch (e) {
@@ -72,22 +74,29 @@
   }
 
   function getTypeIcon(type: string): string {
-    return type.toLowerCase() === "incoming" ? "📥" : "📤";
+    return type.toLowerCase() === "in" ? "📥" : "📤";
+  }
+
+  function getTypeDisplay(type: string): string {
+    return type.toLowerCase() === "in" ? "IN" : "OUT";
   }
 </script>
 
 <div class="modal-overlay" 
      role="dialog" 
      aria-modal="true"
-     tabindex="-1"
+     tabindex="-1">
+  <button class="modal-overlay-button"
      onclick={onClose} 
      onkeydown={(e) => e.key === 'Escape' && onClose()}>
+    <span class="sr-only">Close modal</span>
+  </button>
   <div class="modal-content" 
        role="document"
        onclick={(e) => e.stopPropagation()}
        onkeydown={(e) => e.stopPropagation()}>
     <div class="modal-header">
-      <h2>WAD History</h2>
+      <h2>Transfer History</h2>
       <button class="close-btn" onclick={onClose}>✕</button>
     </div>
 
@@ -95,7 +104,7 @@
       {#if loading}
         <div class="loading">
           <div class="spinner"></div>
-          <p>Loading WAD history...</p>
+          <p>Loading transfer history...</p>
         </div>
       {:else if error}
         <div class="error">
@@ -104,7 +113,7 @@
         </div>
       {:else if wadHistory.length === 0}
         <div class="empty">
-          <p>No WAD history found</p>
+          <p>No transfer history found</p>
         </div>
       {:else}
         <div class="history-list">
@@ -113,7 +122,7 @@
               <div class="wad-header">
                 <div class="wad-type">
                   <span class="type-icon">{getTypeIcon(wad.wadType)}</span>
-                  <span class="type-text">{wad.wadType}</span>
+                  <span class="type-text">{getTypeDisplay(wad.wadType)}</span>
                 </div>
                 <div class="wad-status" style="color: {getStatusColor(wad.status)}">
                   {wad.status}
@@ -131,7 +140,6 @@
               {/if}
               
               <div class="wad-details">
-                                            <div class="wad-id">ID: {wad.id}</div>
                 <div class="wad-time">
                   Created: {formatTimestamp(wad.createdAt)}
                 </div>
@@ -168,6 +176,33 @@
     justify-content: center;
     z-index: 1000;
     padding: 20px;
+  }
+
+  .modal-overlay-button {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .modal-content {

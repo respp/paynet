@@ -26,7 +26,7 @@ starknet-liquidity-source = { workspace = true, optional = true }
 nuts = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
-test-utils = { workspace = true, features = ["concurrency-starknet", "e2e"]}
+test-utils = { workspace = true, features = ["concurrency-starknet"]}
 
 # Db
 r2d2_sqlite = { workspace = true }
