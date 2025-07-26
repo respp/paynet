@@ -99,3 +99,10 @@ export async function get_wad_history(limit?: number): Promise<WadHistoryItem[] 
       return res;
 } 
 
+export async function sync_wads(): Promise<void> {
+      await invoke("sync_wads")
+      .catch((error) => {
+        console.error("failed to sync wads:", error);
+      });
+} 
+

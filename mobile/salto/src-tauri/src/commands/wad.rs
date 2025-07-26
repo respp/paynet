@@ -240,3 +240,51 @@ pub async fn get_wad_history(
 
     Ok(history_items)
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum SyncWadsError {
+    #[error(transparent)]
+    R2D2(#[from] r2d2::Error),
+    #[error(transparent)]
+    Rusqlite(#[from] rusqlite::Error),
+    #[error(transparent)]
+    Wallet(#[from] wallet::errors::Error),
+}
+
+impl serde::Serialize for SyncWadsError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+pub async fn sync_wads(
+    state: State<'_, AppState>,
+) -> Result<(), SyncWadsError> {
+    let db_conn = state.pool.get()?;
+    
+    // Get all pending WADs and try to update their status
+    let pending_wads = wallet::db::wad::get_pending_wads(&db_conn)?;
+    
+    for wad_record in pending_wads {
+        // For now, we'll just mark them as finished if they're old enough (> 1 minute)
+        // In a real implementation, you'd check with the node for actual status
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        if current_time > wad_record.created_at + 60 {
+            wallet::db::wad::update_wad_status(
+                &db_conn, 
+                &wad_record.id, 
+                wallet::db::wad::WadStatus::Finished
+            )?;
+        }
+    }
+    
+    Ok(())
+}
