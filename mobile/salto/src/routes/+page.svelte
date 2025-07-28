@@ -13,7 +13,6 @@
   import { onMount, onDestroy } from "svelte";
   import { getNodesBalance } from "../commands";
   import ReceiveModal from "./receive/ReceiveModal.svelte";
-  import WadHistoryModal from "./components/WadHistoryModal.svelte";
   import WadHistoryPage from "./components/WadHistoryPage.svelte";
 
   const Modal = {

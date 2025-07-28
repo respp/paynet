@@ -79,7 +79,7 @@ export enum WadStatus {
 }
 
 export interface WadHistoryItem {
-    id: string;  // Changed from number to string for UUID
+    id: string;
     wadType: WadType;
     status: WadStatus;
     totalAmountJson: string;
