@@ -11,9 +11,8 @@ use rusqlite::Connection;
 use tonic::transport::Channel;
 
 use crate::{
-    acknowledge, db,
-    errors::Error,
-    types::{BlindingData, PreMints},
+    acknowledge, build_outputs_from_premints, db, errors::Error, get_active_keyset_for_unit,
+    store_new_tokens, types::PreMint,
 };
 
 pub async fn create_quote<U: Unit>(
@@ -113,23 +112,23 @@ pub async fn get_quote_state(
     }
 }
 
-pub async fn redeem_quote<U: Unit>(
+pub async fn redeem_quote(
     pool: Pool<SqliteConnectionManager>,
     node_client: &mut NodeClient<Channel>,
     method: String,
     quote_id: String,
     node_id: u32,
-    unit: U,
+    unit: &str,
     total_amount: Amount,
 ) -> Result<(), Error> {
-    let blinding_data = {
+    let keyset_id = {
         let db_conn = pool.get()?;
-        BlindingData::load_from_db(&db_conn, node_id, unit)?
+        get_active_keyset_for_unit(&db_conn, node_id, unit)?
     };
 
-    let pre_mints = PreMints::generate_for_amount(total_amount, &SplitTarget::None, blinding_data)?;
+    let pre_mints = PreMint::generate_for_amount(total_amount, &SplitTarget::None)?;
 
-    let outputs = pre_mints.build_node_client_outputs();
+    let outputs = build_outputs_from_premints(keyset_id.to_bytes(), &pre_mints);
 
     let mint_request = MintRequest {
         method,
@@ -143,7 +142,13 @@ pub async fn redeem_quote<U: Unit>(
     {
         let mut db_conn = pool.get()?;
         let tx = db_conn.transaction()?;
-        pre_mints.store_new_tokens(&tx, node_id, mint_response.signatures)?;
+        let _new_tokens = store_new_tokens(
+            &tx,
+            node_id,
+            keyset_id,
+            pre_mints.into_iter(),
+            mint_response.signatures.into_iter(),
+        )?;
         db::mint_quote::set_state(&tx, &quote_id, MintQuoteState::Issued)?;
         tx.commit()?;
     }

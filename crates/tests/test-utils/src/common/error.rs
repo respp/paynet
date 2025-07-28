@@ -68,9 +68,10 @@ pub enum Error {
     #[cfg(feature = "e2e")]
     #[error(transparent)]
     R2d2(#[from] r2d2::Error),
-    #[cfg(feature = "e2e")]
     #[error(transparent)]
-    Xpriv(#[from] bitcoin::bip32::Error),
+    ConnectToNode(#[from] wallet::ConnectToNodeError),
+    #[error(transparent)]
+    UnknownEnumValue(#[from] prost::UnknownEnumValue),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

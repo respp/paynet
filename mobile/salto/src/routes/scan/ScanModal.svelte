@@ -38,7 +38,7 @@
   }
 </script>
 
-<Portal isOpen={true} onClose={onCancell} backgroundColor="rgba(0, 0, 0, 0.95)">
+<Portal onClose={onCancell} backgroundColor="rgba(0, 0, 0, 0.95)">
   {#snippet children()}
     <div class="scan-content">
       <p class="scan-instructions">Point your camera at a QR code</p>

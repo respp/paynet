@@ -4,20 +4,17 @@
   import { addNode } from "../../commands";
 
   interface Props {
+    isOpen: boolean;
     nodes: NodeData[];
     onClose: () => void;
     onAddNode: (nodeData: NodeData) => void;
   }
 
-  let { nodes, onClose, onAddNode }: Props = $props();
+  let { isOpen, nodes, onClose, onAddNode }: Props = $props();
 
-  let isLoading = $state(false);
-  let errorMessage = $state("");
-
-  const handleFormSubmit: EventHandler<SubmitEvent, HTMLFormElement> = async (
+  const handleFormSubmit: EventHandler<SubmitEvent, HTMLFormElement> = (
     event,
   ) => {
-    isLoading = true;
     event.preventDefault();
     const form = event.target as HTMLFormElement;
     const formDataObject = new FormData(form);
@@ -30,7 +27,6 @@
           const nodeId = newNodeData[0];
           // Check if node with this ID already exists in the nodes array
           const nodeAlreadyListed = nodes.some((node) => node.id === nodeId);
-
           if (!nodeAlreadyListed) {
             onAddNode({
               id: nodeId,
@@ -41,43 +37,37 @@
             console.log(`node with url ${nodeAddress} already declared`);
           }
         }
-        onClose();
       });
     }
+    onClose();
   };
 </script>
 
-<div class="modal-overlay">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>Add Node</h3>
-      <button class="close-button" onclick={onClose}>✕</button>
+{#if isOpen}
+  <div class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Add Node</h3>
+        <button class="close-button" onclick={onClose}>✕</button>
+      </div>
+
+      <form onsubmit={handleFormSubmit}>
+        <div class="form-group">
+          <label for="node-address">Node's address</label>
+          <input
+            type="url"
+            id="node-address"
+            name="node-address"
+            placeholder="https://example.com"
+            required
+          />
+        </div>
+
+        <button type="submit" class="submit-button">Add</button>
+      </form>
     </div>
-
-    <form onsubmit={handleFormSubmit}>
-      <div class="form-group">
-        <label for="node-address">Node's address</label>
-        <input
-          type="url"
-          id="node-address"
-          name="node-address"
-          placeholder="https://example.com"
-          required
-        />
-      </div>
-
-      <button type="submit" class="submit-button" disabled={isLoading}>
-        {isLoading ? "Adding node..." : "Add"}
-      </button>
-    </form>
-
-    {#if errorMessage}
-      <div class="error-message">
-        {errorMessage}
-      </div>
-    {/if}
   </div>
-</div>
+{/if}
 
 <style>
   .modal-overlay {
@@ -168,28 +158,7 @@
     transition: background-color 0.2s;
   }
 
-  .submit-button:hover:not(:disabled) {
+  .submit-button:hover {
     background-color: #1976d2;
-  }
-
-  .submit-button:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-  }
-
-  .form-group input:disabled {
-    background-color: #f5f5f5;
-    cursor: not-allowed;
-  }
-
-  .error-message {
-    background-color: #fee2e2;
-    color: #dc2626;
-    padding: 0.75rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    margin-top: 1rem;
-    border: 1px solid #fecaca;
-    text-align: center;
   }
 </style>

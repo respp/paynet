@@ -102,7 +102,13 @@ pub async fn create_wads(
 
         let db_conn = state.pool.get()?;
         let proofs = wallet::load_tokens_from_db(&db_conn, &proofs_ids)?;
-        let wad = wallet::create_wad_from_proofs(node_url, unit, None, proofs);
+        let wad = wallet::create_wad_from_proofs(
+            node_url,
+            unit,
+            None,
+            proofs,
+            state.pool.clone(),
+        )?;
         wads.push(wad);
         balance_decrease_events.push(BalanceChange {
             node_id,
@@ -138,7 +144,7 @@ pub enum ReceiveWadsError {
     #[error("this is a json error: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    RegisterNode(#[from] wallet::node::RegisterNodeError),
+    RegisterNode(#[from] wallet::RegisterNodeError),
 }
 
 impl serde::Serialize for ReceiveWadsError {
@@ -160,16 +166,14 @@ pub async fn receive_wads(
 
     for wad in wads.0 {
         let (mut node_client, node_id) =
-            wallet::node::register(state.pool.clone(), &wad.node_url).await?;
+            wallet::register_node(state.pool.clone(), &wad.node_url).await?;
 
         let amount_received = wallet::receive_wad(
             state.pool.clone(),
             &mut node_client,
             node_id,
-            wad.unit,
-            wad.proofs,
-        )
-        .await?;
+            &wad,
+        ).await?;
 
         app.emit(
             "balance-increase",
@@ -181,5 +185,106 @@ pub async fn receive_wads(
         )?;
     }
 
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WadHistoryItem {
+    pub id: String,
+    pub wad_type: String,
+    pub status: String,
+    pub total_amount_json: String,
+    pub memo: Option<String>,
+    pub created_at: u64,
+    pub modified_at: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GetWadHistoryError {
+    #[error(transparent)]
+    R2D2(#[from] r2d2::Error),
+    #[error(transparent)]
+    Rusqlite(#[from] rusqlite::Error),
+}
+
+impl serde::Serialize for GetWadHistoryError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+pub async fn get_wad_history(
+    state: State<'_, AppState>,
+    limit: Option<u32>,
+) -> Result<Vec<WadHistoryItem>, GetWadHistoryError> {
+    let db_conn = state.pool.get()?;
+    let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit.unwrap_or(20))?;
+
+    let history_items = wad_records
+        .into_iter()
+        .map(|record| WadHistoryItem {
+            id: record.id.to_string(),
+            wad_type: record.wad_type.to_string(),
+            status: record.status.to_string(),
+            total_amount_json: record.total_amount_json,
+            memo: record.memo,
+            created_at: record.created_at,
+            modified_at: record.modified_at,
+        })
+        .collect();
+
+    Ok(history_items)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SyncWadsError {
+    #[error(transparent)]
+    R2D2(#[from] r2d2::Error),
+    #[error(transparent)]
+    Rusqlite(#[from] rusqlite::Error),
+    #[error(transparent)]
+    Wallet(#[from] wallet::errors::Error),
+}
+
+impl serde::Serialize for SyncWadsError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+#[tauri::command]
+pub async fn sync_wads(
+    state: State<'_, AppState>,
+) -> Result<(), SyncWadsError> {
+    let db_conn = state.pool.get()?;
+    
+    // Get all pending WADs and try to update their status
+    let pending_wads = wallet::db::wad::get_pending_wads(&db_conn)?;
+    
+    for wad_record in pending_wads {
+        // For now, we'll just mark them as finished if they're old enough (> 1 minute)
+        // In a real implementation, you'd check with the node for actual status
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        if current_time > wad_record.created_at + 60 {
+            wallet::db::wad::update_wad_status(
+                &db_conn, 
+                &wad_record.id, 
+                wallet::db::wad::WadStatus::Finished
+            )?;
+        }
+    }
+    
     Ok(())
 }

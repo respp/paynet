@@ -63,38 +63,46 @@ export async function receive_wads(wads: string) {
       });
 
       return res;
+}
+
+export enum WadType {
+    IN = "IN",
+    OUT = "OUT",
+}
+
+export enum WadStatus {
+    PENDING = "PENDING",
+    CANCELLED = "CANCELLED",
+    FINISHED = "FINISHED",
+    FAILED = "FAILED",
+    PARTIAL = "PARTIAL",
+}
+
+export interface WadHistoryItem {
+    id: string;  // Changed from number to string for UUID
+    wadType: WadType;
+    status: WadStatus;
+    totalAmountJson: string;
+    memo?: string;
+    createdAt: number;
+    modifiedAt: number;
+}
+
+export async function get_wad_history(limit?: number): Promise<WadHistoryItem[] | undefined> {
+      const res = await invoke("get_wad_history", {limit})
+      .then((message) => message as WadHistoryItem[])
+      .catch((error) => {
+        console.error("failed to get wad history:", error);
+        return undefined;
+      });
+
+      return res;
 } 
 
-export type InitWalletResponse = {
-  seedPhrase: string;
-}
+export async function sync_wads(): Promise<void> {
+      await invoke("sync_wads")
+      .catch((error) => {
+        console.error("failed to sync wads:", error);
+      });
+} 
 
-export async function checkWalletExists() {
-  const res = await invoke("check_wallet_exists")
-    .then((message) => message as boolean)
-    .catch((error) => {
-      console.error("failed to check wallet exists:", error);
-      return false;
-    });
-
-  return res;
-}
-
-export async function initWallet() {
-  const res = await invoke("init_wallet")
-    .then((message) => message as InitWalletResponse)
-    .catch((error) => {
-      console.error("failed to init wallet:", error);
-    });
-
-  return res;
-}
-
-export async function restoreWallet(seedPhrase: string) {
-  const res = await invoke("restore_wallet", { seedPhrase })
-    .catch((error) => {
-      console.error("failed to restore wallet:", error);
-    });
-
-  return res;
-}

@@ -82,16 +82,17 @@
   <button class="add-node-button" onclick={openAddNodeModal}> Add Node </button>
 </div>
 
-{#if isAddNodeModalOpen}
-  <AddNodeModal {nodes} onClose={closeAddNodeModal} {onAddNode} />
-{/if}
+<AddNodeModal
+  isOpen={isAddNodeModalOpen}
+  {nodes}
+  onClose={closeAddNodeModal}
+  {onAddNode}
+/>
 
-{#if !!selectedNodeForDeposit}
-  <DepositModal
-    selectedNode={selectedNodeForDeposit}
-    onClose={closeDepositModal}
-  />
-{/if}
+<DepositModal
+  selectedNode={selectedNodeForDeposit}
+  onClose={closeDepositModal}
+/>
 
 <style>
   .nodes-container {

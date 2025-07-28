@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-e2e = ["itertools", "primitive-types", "r2d2", "r2d2_sqlite", "rusqlite", "wallet", "bitcoin", "bip39"]
+e2e = ["itertools", "primitive-types", "r2d2", "r2d2_sqlite", "rusqlite"]
 concurrency = ["futures"]
 
 strk = ["starknet-types", "starknet", "starknet-types-core", "starknet-liquidity-source"]
@@ -23,6 +23,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 serde_json = { workspace = true }
 url = { workspace = true }
 log = { workspace = true }
+wallet = { workspace = true }
 
 # Optional
 futures = { workspace = true, optional = true }
@@ -32,11 +33,10 @@ itertools = { workspace = true, optional = true }
 primitive-types = { workspace = true, optional = true }
 starknet-liquidity-source = { workspace = true, optional = true }
 starknet = { workspace = true, optional = true }
-wallet = { workspace = true, optional = true  }
-bip39 = { workspace = true, optional = true }
-bitcoin = { workspace = true, optional = true }
 
 # Db
 r2d2_sqlite = { workspace = true, optional = true }
 r2d2 = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
+
+prost = { workspace = true }

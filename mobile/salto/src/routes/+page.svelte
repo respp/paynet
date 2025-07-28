@@ -11,14 +11,16 @@
     increaseNodeBalance,
   } from "../utils";
   import { onMount, onDestroy } from "svelte";
-  import { getNodesBalance, checkWalletExists } from "../commands";
+  import { getNodesBalance } from "../commands";
   import ReceiveModal from "./receive/ReceiveModal.svelte";
-  import InitPage from "./init/InitPage.svelte";
+  import WadHistoryModal from "./components/WadHistoryModal.svelte";
+  import WadHistoryPage from "./components/WadHistoryPage.svelte";
 
   const Modal = {
     ROOT: 0,
     SEND: 1,
     RECEIVE: 2,
+    HISTORY: 3,
   } as const;
   type Modal = (typeof Modal)[keyof typeof Modal];
 
@@ -29,25 +31,26 @@
 
   let activeTab: Tab = $state("pay");
   let errorMessage = $state("");
-  let walletExists = $state<boolean | null>(null); // null = loading, true/false = result
 
   // Calculate total balance across all nodes
   let totalBalance: Map<string, number> = $derived(
     computeTotalBalancePerUnit(nodes),
   );
   let formattedTotalBalance: string[] = $derived(
-    totalBalance
-      .entries()
-      .map(([unit, amount]) => {
-        const formatted = formatBalance({ unit, amount });
-        return `${formatted.asset}: ${formatted.amount}`;
-      })
-      .toArray(),
+    Array.from(totalBalance.entries()).map(([unit, amount]) => {
+      const formatted = formatBalance({ unit, amount });
+      return `${formatted.asset}: ${formatted.amount}`;
+    })
   );
 
   // Effect to manage scrolling based on active tab
   $effect(() => {
-    document.body.classList.add("no-scroll");
+    if (activeTab === "history") {
+      // Allow scrolling for history page
+      document.body.classList.remove("no-scroll");
+    } else {
+      document.body.classList.add("no-scroll");
+    }
   });
 
   const onAddNode = (nodeData: NodeData) => {
@@ -59,11 +62,6 @@
   };
   const onNodeBalanceDecrease = (balanceIncrease: BalanceChange) => {
     decreaseNodeBalance(nodes, balanceIncrease);
-  };
-
-  const onWalletInitialized = (initialTab: Tab = "pay") => {
-    walletExists = true;
-    activeTab = initialTab;
   };
 
   // SendModal control functions
@@ -82,19 +80,12 @@
     goBackToRoot();
   }
 
-  onMount(async () => {
-    // First check if wallet exists
-    const exists = await checkWalletExists();
-    walletExists = exists;
-
-    if (exists) {
-      // Only load wallet data if wallet exists
-      getNodesBalance().then((nodesData) => {
-        if (!!nodesData) {
-          nodesData.forEach(onAddNode);
-        }
-      });
-    }
+  onMount(() => {
+    getNodesBalance().then((nodesData) => {
+      if (!!nodesData) {
+        nodesData.forEach(onAddNode);
+      }
+    });
 
     listen<BalanceChange>("balance-increase", (event) => {
       onNodeBalanceIncrease(event.payload);
@@ -102,7 +93,6 @@
     listen<BalanceChange>("balance-decrease", (event) => {
       onNodeBalanceDecrease(event.payload);
     });
-
     // Add popstate listener for back button handling
     window.addEventListener("popstate", handlePopState);
   });
@@ -120,57 +110,48 @@
 </script>
 
 <main class="container">
-  {#if walletExists === null}
-    <!-- Loading state -->
-    <div class="loading-container">
-      <p>Loading...</p>
-    </div>
-  {:else if walletExists === false}
-    <!-- Show initialization page -->
-    <InitPage {onWalletInitialized} />
-  {:else}
-    <!-- Show main app content -->
-    {#if activeTab === "pay"}
-      {#if currentModal == Modal.ROOT}
-        <div class="pay-container">
-          <div class="total-balance-card">
-            <h2 class="balance-title">TOTAL BALANCE</h2>
-            <p class="total-balance-amount">{formattedTotalBalance}</p>
-          </div>
-          {#if errorMessage}
-            <div class="error-message">
-              {errorMessage}
-            </div>
-          {/if}
-          <button class="pay-button" onclick={() => openModal(Modal.SEND)}
-            >Send</button
-          >
-          <button
-            class="receive-button"
-            onclick={() => openModal(Modal.RECEIVE)}>Receive</button
-          >
+  {#if activeTab === "pay"}
+    {#if currentModal == Modal.ROOT}
+      <div class="pay-container">
+        <div class="total-balance-card">
+          <h2 class="balance-title">TOTAL BALANCE</h2>
+          <p class="total-balance-amount">{formattedTotalBalance}</p>
         </div>
-      {:else if currentModal == Modal.SEND}
-        <SendModal availableBalances={totalBalance} onClose={goBackToRoot} />
-      {:else if currentModal == Modal.RECEIVE}
-        <ReceiveModal onClose={goBackToRoot} />
-      {/if}
-    {:else if activeTab === "balances"}
-      <div class="balances-container">
-        <NodesBalancePage {nodes} {onAddNode} />
+        {#if errorMessage}
+          <div class="error-message">
+            {errorMessage}
+          </div>
+        {/if}
+        <button class="pay-button" onclick={() => openModal(Modal.SEND)}
+          >Send</button
+        >
+        <button class="receive-button" onclick={() => openModal(Modal.RECEIVE)}
+          >Receive</button
+        >
       </div>
+    {:else if currentModal == Modal.SEND}
+      <SendModal availableBalances={totalBalance} onClose={goBackToRoot} />
+    {:else if currentModal == Modal.RECEIVE}
+      <ReceiveModal onClose={goBackToRoot} />
+    {:else if currentModal == Modal.HISTORY}
+      <WadHistoryPage />
     {/if}
+  {:else if activeTab === "balances"}
+    <div class="balances-container">
+      <NodesBalancePage {nodes} {onAddNode} />
+    </div>
+  {:else if activeTab === "history"}
+    <WadHistoryPage />
   {/if}
 </main>
 
-{#if walletExists}
-  <NavBar
-    {activeTab}
-    onTabChange={(tab: Tab) => {
-      activeTab = tab;
-    }}
-  />
-{/if}
+<NavBar
+  {activeTab}
+  onTabChange={(tab: Tab) => {
+    activeTab = tab;
+    currentModal = Modal.ROOT;
+  }}
+/>
 
 <style>
   :root {
@@ -322,16 +303,6 @@
   .receive-button:active {
     transform: scale(0.98);
     background-color: #0d4814;
-  }
-
-  .loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 50vh;
-    font-size: 1.2rem;
-    color: #666;
   }
 
   @media (prefers-color-scheme: dark) {
