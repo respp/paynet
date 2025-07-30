@@ -686,7 +686,7 @@ pub async fn acknowledge(
     Ok(())
 }
 
-pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
+pub async fn create_wad_from_proofs<U: Unit + serde::Serialize>(
     node_url: NodeUrl,
     unit: U,
     memo: Option<String>,
@@ -710,7 +710,7 @@ pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
         .collect();
 
     let wad = CompactWad {
-        node_url,
+        node_url: node_url.clone(),
         unit,
         memo,
         proofs: compact_proofs,
@@ -725,6 +725,10 @@ pub fn create_wad_from_proofs<U: Unit + serde::Serialize>(
 
     let db_conn = track_history.get()?;
     let _wad_id = db::wad::register_wad(&db_conn, db::wad::WadType::OUT, &wad, &proof_ys)?;
+
+    // Mark proofs as reserved (not spent yet) so they won't be used by other operations
+    // The actual spending will happen when sync_wads is called (via refresh)
+    db::proof::set_proofs_to_state(&db_conn, &proof_ys, ProofState::Reserved)?;
 
     Ok(wad)
 }
