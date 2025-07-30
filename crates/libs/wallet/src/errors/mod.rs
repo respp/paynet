@@ -49,6 +49,12 @@ pub enum Error {
     UnitMissmatch(String, String),
     #[error("failed to get a connection from the pool: {0}")]
     R2D2(#[from] r2d2::Error),
+    #[error("unexpected proof state: {0}")]
+    UnexpectedProofState(String),
+    #[error("failed to connect to node: {0}")]
+    ConnectToNode(#[from] crate::ConnectToNodeError),
+    #[error("register node error: {0}")]
+    RegisterNode(#[from] crate::RegisterNodeError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
