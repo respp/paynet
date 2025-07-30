@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { get_wad_history, sync_wads } from "../../commands";
   import { formatBalance } from "../../utils";
 
@@ -15,10 +16,38 @@
 
   let wadHistory: WadHistoryItem[] = $state([]);
   let loading = $state(true);
+  let syncing = $state(false);
   let error = $state("");
+
+  // Store unsubscribe functions for cleanup
+  let unsubscribeWadStatusUpdated: (() => void) | null = null;
+  let unsubscribeSyncError: (() => void) | null = null;
 
   onMount(async () => {
     await loadWadHistory();
+    
+    // Listen for WAD status updates from sync_wads
+    unsubscribeWadStatusUpdated = await listen<{wadId: string, newStatus: string}>("wad-status-updated", (event) => {
+      // Update the specific WAD in the history
+      wadHistory = wadHistory.map(wad => 
+        wad.id === event.payload.wadId 
+          ? { ...wad, status: event.payload.newStatus }
+          : wad
+      );
+    });
+    
+    unsubscribeSyncError = await listen<{wadId: string, error: string}>("sync-error", (event) => {
+      console.error(`Sync error for WAD ${event.payload.wadId}:`, event.payload.error);
+    });
+  });
+
+  onDestroy(() => {
+    if (unsubscribeWadStatusUpdated) {
+      unsubscribeWadStatusUpdated();
+    }
+    if (unsubscribeSyncError) {
+      unsubscribeSyncError();
+    }
   });
 
   async function loadWadHistory() {
@@ -26,17 +55,20 @@
       loading = true;
       error = "";
       
-      // Sync WADs first to update their status
-      await sync_wads();
-      
       const history = await get_wad_history(20);
-      
       wadHistory = history || [];
+      
+      // Then sync WADs (this will emit events that update the UI in real-time)
+      syncing = true;
+      await sync_wads();
+      syncing = false;
+      
     } catch (err) {
       console.error("Failed to load transfer history:", err);
       error = "Failed to load transfer history: " + String(err);
     } finally {
       loading = false;
+      syncing = false;
     }
   }
 
@@ -46,16 +78,13 @@
 
   function formatAmount(amountJson: string): string {
     try {
-      console.log("Raw amountJson received:", amountJson);
       const parsed = JSON.parse(amountJson);
-      console.log("Parsed data:", parsed);
       
-      // The data comes as an array of [unit, amount] pairs
       if (Array.isArray(parsed) && parsed.length > 0) {
         const [unit, amount] = parsed[0];
         
-        const formatted = formatBalance({ unit, amount: Number(amount) });
-        return `${formatted.amount} ${formatted.asset}`;
+          const formatted = formatBalance({ unit, amount: Number(amount) });
+          return `${formatted.amount} ${formatted.asset}`;
       }
 
       return "0 STRK";
@@ -108,8 +137,8 @@
         {#each wadHistory as wad}
           <div class="wad-item">
             <div class="wad-first-line">
-              <span class="type-icon">{getTypeIcon(wad.wadType)}</span>
-              <span class="type-text">{getTypeDisplay(wad.wadType)}</span>
+                  <span class="type-icon">{getTypeIcon(wad.wadType)}</span>
+                  <span class="type-text">{getTypeDisplay(wad.wadType)}</span>
               <span class="wad-amount">{formatAmount(wad.totalAmountJson)}</span>
               <span class="wad-status" style="color: {getStatusColor(wad.status)}">{wad.status}</span>
             </div>
@@ -122,8 +151,12 @@
     {/if}
     
     <div class="refresh-container">
-      <button class="refresh-btn" onclick={loadWadHistory} disabled={loading}>
-        🔄 Refresh
+      <button class="refresh-btn" onclick={loadWadHistory} disabled={loading || syncing}>
+        {#if syncing}
+          ⏳ Syncing...
+        {:else}
+          🔄 Refresh
+        {/if}
       </button>
     </div>
   </div>
@@ -157,7 +190,7 @@
 
   .content {
     flex: 1;
-    padding-bottom: 100px;
+    padding-bottom: 120px;
   }
 
   .history-list {
@@ -221,21 +254,36 @@
     left: 0;
     right: 0;
     padding: 12px;
-    background: white;
-    border-top: 1px solid #eee;
+    background: transparent;
     display: flex;
     justify-content: center;
     flex-shrink: 0;
+    z-index: 100;
   }
 
   .refresh-btn {
     background: #007bff;
     color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    padding: 12px 24px;
+    border-radius: 25px;
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+    transition: all 0.2s ease;
+    min-width: 120px;
+  }
+
+  .refresh-btn:hover {
+    background: #0056b3;
+    box-shadow: 0 6px 16px rgba(0, 123, 255, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .refresh-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
   }
 
   .refresh-btn:disabled {
