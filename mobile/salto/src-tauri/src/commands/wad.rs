@@ -108,7 +108,7 @@ pub async fn create_wads(
             None,
             proofs,
             state.pool.clone(),
-        )?;
+        ).await?;
         wads.push(wad);
         balance_decrease_events.push(BalanceChange {
             node_id,
@@ -241,6 +241,20 @@ pub async fn get_wad_history(
     Ok(history_items)
 }
 
+#[derive(Debug, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WadStatusUpdate {
+    pub wad_id: String,
+    pub new_status: String,
+}
+
+#[derive(Debug, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncError {
+    pub wad_id: String,
+    pub error: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SyncWadsError {
     #[error(transparent)]
@@ -249,6 +263,8 @@ pub enum SyncWadsError {
     Rusqlite(#[from] rusqlite::Error),
     #[error(transparent)]
     Wallet(#[from] wallet::errors::Error),
+    #[error(transparent)]
+    Tauri(#[from] tauri::Error),
 }
 
 impl serde::Serialize for SyncWadsError {
@@ -262,27 +278,32 @@ impl serde::Serialize for SyncWadsError {
 
 #[tauri::command]
 pub async fn sync_wads(
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), SyncWadsError> {
-    let db_conn = state.pool.get()?;
+    // Use the lib wallet function instead of duplicating code
+    let wad_results = wallet::sync::sync_pending_wads(state.pool.clone()).await?;
     
-    // Get all pending WADs and try to update their status
-    let pending_wads = wallet::db::wad::get_pending_wads(&db_conn)?;
-    
-    for wad_record in pending_wads {
-        // For now, we'll just mark them as finished if they're old enough (> 1 minute)
-        // In a real implementation, you'd check with the node for actual status
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-            
-        if current_time > wad_record.created_at + 60 {
-            wallet::db::wad::update_wad_status(
-                &db_conn, 
-                &wad_record.id, 
-                wallet::db::wad::WadStatus::Finished
-            )?;
+    // Emit events for UI updates
+    for result in wad_results {
+        match result.result {
+            Ok(Some(status)) => {
+                // Emit status update event
+                app.emit("wad-status-updated", WadStatusUpdate {
+                    wad_id: result.wad_id.clone(),
+                    new_status: status.to_string(),
+                })?;
+            }
+            Ok(None) => {
+                // No status change, no event needed
+            }
+            Err(e) => {
+                // Emit error event
+                app.emit("sync-error", SyncError {
+                    wad_id: result.wad_id.clone(),
+                    error: e.to_string(),
+                })?;
+            }
         }
     }
     
