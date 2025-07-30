@@ -460,7 +460,8 @@ async fn main() -> Result<()> {
                     memo.clone(),
                     proofs,
                     pool.clone(),
-                ).await?;
+                )
+                .await?;
                 wads.push(wad);
             }
             if let Some(max_reached) = should_revert {

@@ -36,10 +36,10 @@ pub async fn sync_all_pending_operations(pool: Pool<SqliteConnectionManager>) ->
         sync_melt_quotes(&pool, &mut node_client, &pending_quotes).await?;
     }
 
-    // Sync pending WADs using the lib wallet function i 
+    // Sync pending WADs using the lib wallet function i
     println!("Syncing pending WADs");
     let wad_results = wallet::sync::sync_pending_wads(pool).await?;
-    
+
     // Log results for CLI
     for result in wad_results {
         match result.result {
