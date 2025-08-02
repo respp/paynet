@@ -65,7 +65,6 @@ async fn sync_mint_quotes(
     node_id: u32,
     pending_mint_quotes: &[PendingMintQuote],
 ) -> Result<()> {
-    println!("pending: {:?}", pending_mint_quotes);
     for pending_mint_quote in pending_mint_quotes {
         let new_state = {
             let db_conn = pool.get()?;

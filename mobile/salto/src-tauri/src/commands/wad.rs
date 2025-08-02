@@ -1,9 +1,9 @@
 use std::{cmp::Ordering, str::FromStr};
 
-use uuid::Uuid;
 use nuts::Amount;
 use starknet_types::{Asset, AssetFromStrError, AssetToUnitConversionError, Unit};
 use tauri::{AppHandle, Emitter, State};
+use uuid::Uuid;
 use wallet::types::compact_wad::{self, CompactWads};
 
 use crate::{
@@ -198,6 +198,8 @@ pub enum GetWadHistoryError {
     R2D2(#[from] r2d2::Error),
     #[error(transparent)]
     Rusqlite(#[from] rusqlite::Error),
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
 }
 
 impl serde::Serialize for GetWadHistoryError {
@@ -217,18 +219,22 @@ pub async fn get_wad_history(
     let db_conn = state.pool.get()?;
     let wad_records = wallet::db::wad::get_recent_wads(&db_conn, limit.unwrap_or(20))?;
 
-    let history_items = wad_records
-        .into_iter()
-        .map(|record| WadHistoryItem {
+    let mut history_items = Vec::with_capacity(wad_records.len());
+    for record in wad_records {
+        let total_amount_json = serde_json::to_string(
+            &wallet::db::wad::get_amounts_by_id::<Unit>(&db_conn, record.id)?,
+        )?;
+
+        history_items.push(WadHistoryItem {
             id: record.id.to_string(),
             wad_type: record.wad_type.to_string(),
             status: record.status.to_string(),
-            total_amount_json: record.total_amount_json,
+            total_amount_json,
             memo: record.memo,
             created_at: record.created_at,
             modified_at: record.modified_at,
         })
-        .collect();
+    }
 
     Ok(history_items)
 }

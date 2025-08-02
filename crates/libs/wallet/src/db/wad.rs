@@ -1,11 +1,13 @@
-use crate::types::compact_wad::CompactWad;
-use nuts::nut01::PublicKey;
-use nuts::traits::Unit;
+use crate::types::NodeUrl;
+use nuts::{Amount, nut01::PublicKey};
 use rusqlite::{
     Connection, Result, ToSql, params,
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 pub const CREATE_TABLE_WAD: &str = r#"
@@ -13,8 +15,7 @@ pub const CREATE_TABLE_WAD: &str = r#"
             id BLOB NOT NULL,
             type TEXT NOT NULL CHECK (type IN ('IN', 'OUT')),
             status TEXT NOT NULL CHECK (status IN ('PENDING', 'CANCELLED', 'FINISHED', 'FAILED', 'PARTIAL')),
-            wad_data TEXT NOT NULL,
-            total_amount_json TEXT NOT NULL,
+            node_url TEXT NOT NULL, 
             memo TEXT,
             created_at INTEGER NOT NULL,
             modified_at INTEGER NOT NULL,
@@ -119,50 +120,32 @@ pub struct WadRecord {
     pub id: Uuid,
     pub wad_type: WadType,
     pub status: WadStatus,
-    pub wad_data: String,          // JSON string of CompactWad
-    pub total_amount_json: String, // JSON array of unit/amount pairs
+    pub node_url: String,
     pub memo: Option<String>,
     pub created_at: u64,
     pub modified_at: u64,
 }
 
-impl<U: Unit> CompactWad<U> {
-    fn to_uuid(&self) -> Uuid {
-        const NAMESPACE_WAD: Uuid = Uuid::from_u128(336702331980467871995349228715494130514);
+fn compute_wad_uuid(node_url: &NodeUrl, proofs_ys: &[PublicKey]) -> Uuid {
+    const NAMESPACE_WAD: Uuid = Uuid::from_u128(336702331980467871995349228715494130514);
 
-        let mut buffer = Vec::new();
-        buffer.extend_from_slice(self.node_url.0.as_str().as_bytes());
-        buffer.extend_from_slice(&self.unit.into().to_be_bytes());
-        for proof in &self.proofs {
-            buffer.extend_from_slice(&proof.keyset_id.to_bytes());
-            for proof in &proof.proofs {
-                buffer.extend_from_slice(&Into::<u64>::into(proof.amount).to_be_bytes());
-                buffer.extend_from_slice(proof.secret.as_bytes());
-                buffer.extend_from_slice(&proof.c.to_bytes());
-            }
-        }
-
-        Uuid::new_v5(&NAMESPACE_WAD, &buffer)
+    let mut buffer = Vec::new();
+    buffer.extend_from_slice(node_url.0.as_str().as_bytes());
+    for y in proofs_ys {
+        buffer.extend_from_slice(&y.to_bytes());
     }
+
+    Uuid::new_v5(&NAMESPACE_WAD, &buffer)
 }
 
-pub fn register_wad<U: Unit + serde::Serialize>(
+pub fn register_wad(
     conn: &Connection,
     wad_type: WadType,
-    wad: &CompactWad<U>,
+    node_url: &NodeUrl,
+    memo: &Option<String>,
     proof_ys: &[PublicKey],
 ) -> Result<Uuid> {
-    let wad_id = wad.to_uuid();
-
-    let wad_data = serde_json::to_string(wad)
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-
-    let total_amount = wad
-        .value()
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-
-    let total_amount_json = serde_json::to_string(&[(wad.unit.to_string(), total_amount)])
-        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let wad_id = compute_wad_uuid(node_url, proof_ys);
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -171,9 +154,9 @@ pub fn register_wad<U: Unit + serde::Serialize>(
 
     const INSERT_WAD: &str = r#"
         INSERT INTO wad 
-            (id, type, status, wad_data, total_amount_json, memo, created_at, modified_at)
+            (id, type, status, node_url, memo, created_at, modified_at)
         VALUES 
-            (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            (?1, ?2, ?3, ?4, ?5, ?6, ?7)
     "#;
 
     let mut stmt = conn.prepare(INSERT_WAD)?;
@@ -181,9 +164,8 @@ pub fn register_wad<U: Unit + serde::Serialize>(
         wad_id,
         wad_type,
         WadStatus::Pending,
-        wad_data,
-        total_amount_json,
-        wad.memo,
+        node_url,
+        memo,
         now,
         now,
     ])?;
@@ -208,17 +190,16 @@ fn parse_wad_record(row: &rusqlite::Row) -> rusqlite::Result<WadRecord> {
         id: row.get(0)?,
         wad_type: row.get(1)?,
         status: row.get(2)?,
-        wad_data: row.get(3)?,
-        total_amount_json: row.get(4)?,
-        memo: row.get(5)?,
-        created_at: row.get(6)?,
-        modified_at: row.get(7)?,
+        node_url: row.get(3)?,
+        memo: row.get(4)?,
+        created_at: row.get(5)?,
+        modified_at: row.get(6)?,
     })
 }
 
 pub fn get_recent_wads(conn: &Connection, limit: u32) -> Result<Vec<WadRecord>> {
     const GET_RECENT_WADS: &str = r#"
-        SELECT id, type, status, wad_data, total_amount_json, memo, created_at, modified_at
+        SELECT id, type, status, node_url, memo, created_at, modified_at
         FROM wad 
         ORDER BY created_at DESC 
         LIMIT ?1
@@ -248,21 +229,34 @@ pub fn update_wad_status(conn: &Connection, wad_id: Uuid, status: WadStatus) -> 
     Ok(())
 }
 
-pub fn get_pending_wads(conn: &Connection) -> Result<Vec<Uuid>> {
+#[derive(Debug)]
+pub struct SyncData {
+    pub id: Uuid,
+    pub r#type: WadType,
+    pub node_url: NodeUrl,
+}
+
+pub fn get_pending_wads(conn: &Connection) -> Result<Vec<SyncData>> {
     const GET_PENDING_WADS: &str = r#"
-        SELECT id 
+        SELECT id, type, node_url 
         FROM wad 
         WHERE status = ?1
         ORDER BY created_at ASC
     "#;
 
     let mut stmt = conn.prepare(GET_PENDING_WADS)?;
-    let rows = stmt.query_map([WadStatus::Pending], |r| r.get::<_, Uuid>(0))?;
+    let rows = stmt.query_map([WadStatus::Pending], |r| {
+        Ok(SyncData {
+            id: r.get::<_, Uuid>(0)?,
+            r#type: r.get::<_, WadType>(1)?,
+            node_url: r.get::<_, NodeUrl>(2)?,
+        })
+    })?;
 
     rows.collect::<Result<Vec<_>, _>>()
 }
 
-pub fn get_wad_proofs(conn: &Connection, wad_id: Uuid) -> Result<Vec<PublicKey>> {
+pub fn get_proofs_ys_by_id(conn: &Connection, wad_id: Uuid) -> Result<Vec<PublicKey>> {
     const GET_WAD_PROOFS: &str = r#"
         SELECT proof_y FROM wad_proof WHERE wad_id = ?1
     "#;
@@ -273,6 +267,34 @@ pub fn get_wad_proofs(conn: &Connection, wad_id: Uuid) -> Result<Vec<PublicKey>>
         PublicKey::from_slice(&y_bytes).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Blob, Box::new(e))
         })
+    })?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+}
+
+pub fn get_amounts_by_id<U: FromStr>(conn: &Connection, wad_id: Uuid) -> Result<Vec<(U, Amount)>>
+where
+    <U as std::str::FromStr>::Err: std::error::Error + Send + Sync + 'static,
+{
+    const GET_WAD_UNIT_AMOUNTS: &str = r#"
+        SELECT k.unit, SUM(p.amount) as total_amount
+        FROM wad_proof wp
+        JOIN proof p ON wp.proof_y = p.y
+        JOIN keyset k ON p.keyset_id = k.id
+        WHERE wp.wad_id = ?1
+        GROUP BY k.unit
+    "#;
+
+    let mut stmt = conn.prepare(GET_WAD_UNIT_AMOUNTS)?;
+    let rows = stmt.query_map([wad_id], |row| {
+        let unit_str: String = row.get(0)?;
+        let amount: Amount = row.get(1)?;
+
+        let unit = U::from_str(&unit_str).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+        })?;
+
+        Ok((unit, amount))
     })?;
 
     rows.collect::<Result<Vec<_>, _>>()

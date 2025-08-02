@@ -6,10 +6,9 @@ use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::{
-    PreMint, SplitTarget, acknowledge, build_outputs_from_premints, db, errors::Error,
-    get_active_keyset_for_unit, hash_swap_request, store_new_tokens, types::ProofState,
+    db::{self, wad::SyncData},
+    errors::Error,
 };
-use nuts::{Amount, nut01::PublicKey};
 
 pub async fn melt_quote(
     pool: Pool<SqliteConnectionManager>,
@@ -80,8 +79,9 @@ pub async fn sync_pending_wads(
 
     let mut results = Vec::with_capacity(pending_wads.len());
 
-    for wad_id in pending_wads {
-        let result = sync_single_wad(pool.clone(), wad_id).await;
+    for sync_data in pending_wads {
+        let wad_id = sync_data.id;
+        let result = sync_single_wad(pool.clone(), sync_data).await;
         results.push(WadSyncResult {
             wad_id,
             result: result.map_err(|e| e.to_string()),
@@ -93,23 +93,25 @@ pub async fn sync_pending_wads(
 
 pub async fn sync_single_wad(
     pool: Pool<SqliteConnectionManager>,
-    wad_id: Uuid,
+    sync_info: SyncData,
 ) -> Result<Option<db::wad::WadStatus>, Error> {
     use node_client::{CheckStateRequest, ProofState};
+    let SyncData {
+        id: wad_id,
+        r#type: _wad_type,
+        node_url,
+    } = sync_info;
 
     let proof_ys = {
         let db_conn = pool.get()?;
-        db::wad::get_wad_proofs(&db_conn, wad_id)?
+        db::wad::get_proofs_ys_by_id(&db_conn, wad_id)?
     };
 
     if proof_ys.is_empty() {
         return Ok(None);
     }
 
-    let compact_wad: crate::types::compact_wad::CompactWad<starknet_types::Unit> =
-        serde_json::from_str(&wad_id.wad_data)?;
-
-    let mut node_client = crate::connect_to_node(&compact_wad.node_url).await?;
+    let mut node_client = crate::connect_to_node(&node_url).await?;
 
     let check_request = CheckStateRequest {
         ys: proof_ys.iter().map(|y| y.to_bytes().to_vec()).collect(),
@@ -131,39 +133,18 @@ pub async fn sync_single_wad(
         ProofState::try_from(state.state).map_err(|_| {
             Error::UnexpectedProofState(format!(
                 "Invalid proof state encountered for WAD {}: {:?}",
-                wad_id.id, state.state
+                wad_id, state.state
             ))
         })?;
     }
 
-    let new_status = match wad_id.wad_type {
-        db::wad::WadType::OUT => {
-            if all_spent {
-                Some(db::wad::WadStatus::Finished)
-            } else {
-                match spend_out_wad_proofs(pool.clone(), &mut node_client, &compact_wad, &proof_ys)
-                    .await
-                {
-                    Ok(()) => Some(db::wad::WadStatus::Finished),
-                    Err(_) => None,
-                }
-            }
-        }
-        db::wad::WadType::IN => {
-            if all_spent {
-                Some(db::wad::WadStatus::Finished)
-            } else {
-                None
-            }
-        }
-    };
-
-    if let Some(status) = &new_status {
+    if all_spent {
         let db_conn = pool.get()?;
-        db::wad::update_wad_status(&db_conn, wad_id.id, *status)?;
+        db::wad::update_wad_status(&db_conn, wad_id, db::wad::WadStatus::Finished)?;
+        Ok(Some(db::wad::WadStatus::Finished))
+    } else {
+        Ok(None)
     }
-
-    Ok(new_status)
 }
 
 #[derive(Debug, Clone)]

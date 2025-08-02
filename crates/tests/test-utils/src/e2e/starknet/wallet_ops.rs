@@ -214,7 +214,7 @@ impl WalletOps {
         // Get proof public keys for this WAD
         let proof_ys = {
             let db_conn = pool.get()?;
-            wallet::db::wad::get_wad_proofs(&db_conn, wad_record.id)?
+            wallet::db::wad::get_proofs_ys_by_id(&db_conn, wad_record.id)?
         };
 
         if proof_ys.is_empty() {
@@ -227,7 +227,7 @@ impl WalletOps {
 
         // Parse the WAD data to get node information
         let compact_wad: wallet::types::compact_wad::CompactWad<starknet_types::Unit> =
-            serde_json::from_str(&wad_record.wad_data)?;
+            serde_json::from_str(&wad_record.node_url)?;
 
         // Connect to the node
         let mut node_client = wallet::connect_to_node(&compact_wad.node_url).await?;

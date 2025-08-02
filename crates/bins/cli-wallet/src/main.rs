@@ -573,10 +573,11 @@ async fn main() -> Result<()> {
             println!("WAD History (showing {} most recent):\n", wad_records.len());
 
             for wad_record in wad_records {
+                let amounts = wallet::db::wad::get_amounts_by_id::<Unit>(&db_conn, wad_record.id)?;
                 println!("ID: {}", wad_record.id);
                 println!(
-                    "Type: {} | Status: {} | Total Amount: {}",
-                    wad_record.wad_type, wad_record.status, wad_record.total_amount_json
+                    "Type: {} | Status: {} | Total Amount: {:?}", //TODO better formating
+                    wad_record.node_url, wad_record.status, amounts
                 );
                 println!(
                     "Created: {} | Modified: {}",

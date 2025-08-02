@@ -35,7 +35,7 @@ pub fn get_proof_and_set_state_pending(
         None
     } else {
         let mut stmt =
-            conn.prepare("SELECT keyset_id, unblind_signature , secret FROM proof WHERE y = ?1")?;
+            conn.prepare("SELECT keyset_id, unblind_signature, secret FROM proof WHERE y = ?1")?;
 
         stmt.query_row([y], |r| {
             Ok((

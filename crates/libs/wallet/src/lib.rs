@@ -443,7 +443,13 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
         let proof_ys = proof_ys?;
 
         let db_conn = pool.get()?;
-        db::wad::register_wad(&db_conn, db::wad::WadType::IN, wad, &proof_ys)?
+        db::wad::register_wad(
+            &db_conn,
+            db::wad::WadType::IN,
+            &wad.node_url,
+            wad.memo(),
+            &proof_ys,
+        )?
     };
 
     const INSERT_PROOF: &str = r#"
@@ -725,7 +731,13 @@ pub async fn create_wad_from_proofs<U: Unit + serde::Serialize>(
     let proof_ys = proof_ys?;
 
     let db_conn = track_history.get()?;
-    let _wad_id = db::wad::register_wad(&db_conn, db::wad::WadType::OUT, &wad, &proof_ys)?;
+    let _wad_id = db::wad::register_wad(
+        &db_conn,
+        db::wad::WadType::OUT,
+        &wad.node_url,
+        wad.memo(),
+        &proof_ys,
+    )?;
 
     // Mark proofs as reserved (not spent yet) so they won't be used by other operations
     // The actual spending will happen when sync_wads is called (via refresh)
