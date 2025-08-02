@@ -214,7 +214,7 @@ impl WalletOps {
         // Get proof public keys for this WAD
         let proof_ys = {
             let db_conn = pool.get()?;
-            wallet::db::wad::get_wad_proofs(&db_conn, &wad_record.id)?
+            wallet::db::wad::get_wad_proofs(&db_conn, wad_record.id)?
         };
 
         if proof_ys.is_empty() {
@@ -307,7 +307,7 @@ impl WalletOps {
 
         if let Some(status) = new_status {
             let db_conn = pool.get()?;
-            wallet::db::wad::update_wad_status(&db_conn, &wad_record.id, status)?;
+            wallet::db::wad::update_wad_status(&db_conn, wad_record.id, status)?;
         }
 
         Ok(new_status)

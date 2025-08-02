@@ -1,5 +1,6 @@
 use std::{cmp::Ordering, str::FromStr};
 
+use uuid::Uuid;
 use nuts::Amount;
 use starknet_types::{Asset, AssetFromStrError, AssetToUnitConversionError, Unit};
 use tauri::{AppHandle, Emitter, State};
@@ -102,13 +103,8 @@ pub async fn create_wads(
 
         let db_conn = state.pool.get()?;
         let proofs = wallet::load_tokens_from_db(&db_conn, &proofs_ids)?;
-        let wad = wallet::create_wad_from_proofs(
-            node_url,
-            unit,
-            None,
-            proofs,
-            state.pool.clone(),
-        ).await?;
+        let wad = wallet::create_wad_from_proofs(node_url, unit, None, proofs, state.pool.clone())
+            .await?;
         wads.push(wad);
         balance_decrease_events.push(BalanceChange {
             node_id,
@@ -168,12 +164,8 @@ pub async fn receive_wads(
         let (mut node_client, node_id) =
             wallet::register_node(state.pool.clone(), &wad.node_url).await?;
 
-        let amount_received = wallet::receive_wad(
-            state.pool.clone(),
-            &mut node_client,
-            node_id,
-            &wad,
-        ).await?;
+        let amount_received =
+            wallet::receive_wad(state.pool.clone(), &mut node_client, node_id, &wad).await?;
 
         app.emit(
             "balance-increase",
@@ -244,14 +236,14 @@ pub async fn get_wad_history(
 #[derive(Debug, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WadStatusUpdate {
-    pub wad_id: String,
+    pub wad_id: Uuid,
     pub new_status: String,
 }
 
 #[derive(Debug, serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncError {
-    pub wad_id: String,
+    pub wad_id: Uuid,
     pub error: String,
 }
 
@@ -277,35 +269,38 @@ impl serde::Serialize for SyncWadsError {
 }
 
 #[tauri::command]
-pub async fn sync_wads(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), SyncWadsError> {
+pub async fn sync_wads(app: AppHandle, state: State<'_, AppState>) -> Result<(), SyncWadsError> {
     // Use the lib wallet function instead of duplicating code
     let wad_results = wallet::sync::sync_pending_wads(state.pool.clone()).await?;
-    
+
     // Emit events for UI updates
     for result in wad_results {
         match result.result {
             Ok(Some(status)) => {
                 // Emit status update event
-                app.emit("wad-status-updated", WadStatusUpdate {
-                    wad_id: result.wad_id.clone(),
-                    new_status: status.to_string(),
-                })?;
+                app.emit(
+                    "wad-status-updated",
+                    WadStatusUpdate {
+                        wad_id: result.wad_id,
+                        new_status: status.to_string(),
+                    },
+                )?;
             }
             Ok(None) => {
                 // No status change, no event needed
             }
             Err(e) => {
                 // Emit error event
-                app.emit("sync-error", SyncError {
-                    wad_id: result.wad_id.clone(),
-                    error: e.to_string(),
-                })?;
+                app.emit(
+                    "sync-error",
+                    SyncError {
+                        wad_id: result.wad_id,
+                        error: e.to_string(),
+                    },
+                )?;
             }
         }
     }
-    
+
     Ok(())
 }

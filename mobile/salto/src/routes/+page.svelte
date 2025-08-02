@@ -39,7 +39,7 @@
     Array.from(totalBalance.entries()).map(([unit, amount]) => {
       const formatted = formatBalance({ unit, amount });
       return `${formatted.asset}: ${formatted.amount}`;
-    })
+    }),
   );
 
   // Effect to manage scrolling based on active tab

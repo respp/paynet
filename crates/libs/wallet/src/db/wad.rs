@@ -8,6 +8,32 @@ use rusqlite::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+pub const CREATE_TABLE_WAD: &str = r#"
+        CREATE TABLE IF NOT EXISTS wad (
+            id BLOB NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('IN', 'OUT')),
+            status TEXT NOT NULL CHECK (status IN ('PENDING', 'CANCELLED', 'FINISHED', 'FAILED', 'PARTIAL')),
+            wad_data TEXT NOT NULL,
+            total_amount_json TEXT NOT NULL,
+            memo TEXT,
+            created_at INTEGER NOT NULL,
+            modified_at INTEGER NOT NULL,
+            PRIMARY KEY (id, type)
+        );
+
+        CREATE INDEX wad_type ON wad(type);
+        CREATE INDEX wad_status ON wad(status);
+        CREATE INDEX wad_created_at ON wad(created_at);
+    "#;
+
+pub const CREATE_TABLE_WAD_PROOF: &str = r#"
+        CREATE TABLE IF NOT EXISTS wad_proof (
+            wad_id BLOB NOT NULL,
+            proof_y BLOB(33) NOT NULL REFERENCES proof(y) ON DELETE CASCADE,
+            PRIMARY KEY (wad_id, proof_y)
+        );
+    "#;
+
 #[derive(Debug, Clone, Copy)]
 pub enum WadType {
     IN,
@@ -90,7 +116,7 @@ impl std::fmt::Display for WadStatus {
 
 #[derive(Debug, Clone)]
 pub struct WadRecord {
-    pub id: String,
+    pub id: Uuid,
     pub wad_type: WadType,
     pub status: WadStatus,
     pub wad_data: String,          // JSON string of CompactWad
@@ -100,13 +126,34 @@ pub struct WadRecord {
     pub modified_at: u64,
 }
 
+impl<U: Unit> CompactWad<U> {
+    fn to_uuid(&self) -> Uuid {
+        const NAMESPACE_WAD: Uuid = Uuid::from_u128(336702331980467871995349228715494130514);
+
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(self.node_url.0.as_str().as_bytes());
+        buffer.extend_from_slice(&self.unit.into().to_be_bytes());
+        for proof in &self.proofs {
+            buffer.extend_from_slice(&proof.keyset_id.to_bytes());
+            for proof in &proof.proofs {
+                buffer.extend_from_slice(&Into::<u64>::into(proof.amount).to_be_bytes());
+                buffer.extend_from_slice(proof.secret.as_bytes());
+                buffer.extend_from_slice(&proof.c.to_bytes());
+            }
+        }
+
+        Uuid::new_v5(&NAMESPACE_WAD, &buffer)
+    }
+}
+
 pub fn register_wad<U: Unit + serde::Serialize>(
     conn: &Connection,
     wad_type: WadType,
     wad: &CompactWad<U>,
     proof_ys: &[PublicKey],
-) -> Result<String> {
-    let wad_id = Uuid::new_v4().to_string();
+) -> Result<Uuid> {
+    let wad_id = wad.to_uuid();
+
     let wad_data = serde_json::to_string(wad)
         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
@@ -145,6 +192,7 @@ pub fn register_wad<U: Unit + serde::Serialize>(
     const INSERT_WAD_PROOF: &str = r#"
         INSERT INTO wad_proof (wad_id, proof_y)
         VALUES (?1, ?2)
+        ON CONFLICT DO NOTHING;
     "#;
 
     let mut stmt = conn.prepare(INSERT_WAD_PROOF)?;
@@ -182,7 +230,7 @@ pub fn get_recent_wads(conn: &Connection, limit: u32) -> Result<Vec<WadRecord>> 
     rows.collect::<Result<Vec<_>, _>>()
 }
 
-pub fn update_wad_status(conn: &Connection, wad_id: &str, status: WadStatus) -> Result<()> {
+pub fn update_wad_status(conn: &Connection, wad_id: Uuid, status: WadStatus) -> Result<()> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -200,21 +248,21 @@ pub fn update_wad_status(conn: &Connection, wad_id: &str, status: WadStatus) -> 
     Ok(())
 }
 
-pub fn get_pending_wads(conn: &Connection) -> Result<Vec<WadRecord>> {
+pub fn get_pending_wads(conn: &Connection) -> Result<Vec<Uuid>> {
     const GET_PENDING_WADS: &str = r#"
-        SELECT id, type, status, wad_data, total_amount_json, memo, created_at, modified_at
+        SELECT id 
         FROM wad 
         WHERE status = ?1
         ORDER BY created_at ASC
     "#;
 
     let mut stmt = conn.prepare(GET_PENDING_WADS)?;
-    let rows = stmt.query_map([WadStatus::Pending], parse_wad_record)?;
+    let rows = stmt.query_map([WadStatus::Pending], |r| r.get::<_, Uuid>(0))?;
 
     rows.collect::<Result<Vec<_>, _>>()
 }
 
-pub fn get_wad_proofs(conn: &Connection, wad_id: &str) -> Result<Vec<PublicKey>> {
+pub fn get_wad_proofs(conn: &Connection, wad_id: Uuid) -> Result<Vec<PublicKey>> {
     const GET_WAD_PROOFS: &str = r#"
         SELECT proof_y FROM wad_proof WHERE wad_id = ?1
     "#;

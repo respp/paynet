@@ -41,31 +41,6 @@ pub const CREATE_TABLE_MELT_QUOTE: &str = r#"
             transfer_ids TEXT
         );"#;
 
-pub const CREATE_TABLE_WAD: &str = r#"
-        CREATE TABLE IF NOT EXISTS wad (
-            id TEXT PRIMARY KEY,
-            type TEXT NOT NULL CHECK (type IN ('IN', 'OUT')),
-            status TEXT NOT NULL CHECK (status IN ('PENDING', 'CANCELLED', 'FINISHED', 'FAILED', 'PARTIAL')),
-            wad_data TEXT NOT NULL,
-            total_amount_json TEXT NOT NULL,
-            memo TEXT,
-            created_at INTEGER NOT NULL,
-            modified_at INTEGER NOT NULL
-        );
-
-        CREATE INDEX wad_type ON wad(type);
-        CREATE INDEX wad_status ON wad(status);
-        CREATE INDEX wad_created_at ON wad(created_at);
-    "#;
-
-pub const CREATE_TABLE_WAD_PROOF: &str = r#"
-        CREATE TABLE IF NOT EXISTS wad_proof (
-            wad_id TEXT NOT NULL REFERENCES wad(id) ON DELETE CASCADE,
-            proof_y BLOB(33) NOT NULL REFERENCES proof(y) ON DELETE CASCADE,
-            PRIMARY KEY (wad_id, proof_y)
-        );
-    "#;
-
 pub fn create_tables(conn: &mut Connection) -> Result<()> {
     let tx = conn.transaction()?;
 
@@ -75,8 +50,8 @@ pub fn create_tables(conn: &mut Connection) -> Result<()> {
     tx.execute(CREATE_TABLE_MINT_QUOTE, ())?;
     tx.execute(CREATE_TABLE_MELT_QUOTE, ())?;
     tx.execute(proof::CREATE_TABLE_PROOF, ())?;
-    tx.execute(CREATE_TABLE_WAD, ())?;
-    tx.execute(CREATE_TABLE_WAD_PROOF, ())?;
+    tx.execute(wad::CREATE_TABLE_WAD, ())?;
+    tx.execute(wad::CREATE_TABLE_WAD_PROOF, ())?;
 
     tx.commit()?;
 

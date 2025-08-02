@@ -3,6 +3,7 @@ use nuts::nut05::MeltQuoteState;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tonic::transport::Channel;
+use uuid::Uuid;
 
 use crate::{
     PreMint, SplitTarget, acknowledge, build_outputs_from_premints, db, errors::Error,
@@ -79,10 +80,10 @@ pub async fn sync_pending_wads(
 
     let mut results = Vec::with_capacity(pending_wads.len());
 
-    for wad_record in pending_wads {
-        let result = sync_single_wad(pool.clone(), &wad_record).await;
+    for wad_id in pending_wads {
+        let result = sync_single_wad(pool.clone(), wad_id).await;
         results.push(WadSyncResult {
-            wad_id: wad_record.id.clone(),
+            wad_id,
             result: result.map_err(|e| e.to_string()),
         });
     }
@@ -92,13 +93,13 @@ pub async fn sync_pending_wads(
 
 pub async fn sync_single_wad(
     pool: Pool<SqliteConnectionManager>,
-    wad_record: &db::wad::WadRecord,
+    wad_id: Uuid,
 ) -> Result<Option<db::wad::WadStatus>, Error> {
     use node_client::{CheckStateRequest, ProofState};
 
     let proof_ys = {
         let db_conn = pool.get()?;
-        db::wad::get_wad_proofs(&db_conn, &wad_record.id)?
+        db::wad::get_wad_proofs(&db_conn, wad_id)?
     };
 
     if proof_ys.is_empty() {
@@ -106,7 +107,7 @@ pub async fn sync_single_wad(
     }
 
     let compact_wad: crate::types::compact_wad::CompactWad<starknet_types::Unit> =
-        serde_json::from_str(&wad_record.wad_data)?;
+        serde_json::from_str(&wad_id.wad_data)?;
 
     let mut node_client = crate::connect_to_node(&compact_wad.node_url).await?;
 
@@ -130,12 +131,12 @@ pub async fn sync_single_wad(
         ProofState::try_from(state.state).map_err(|_| {
             Error::UnexpectedProofState(format!(
                 "Invalid proof state encountered for WAD {}: {:?}",
-                wad_record.id, state.state
+                wad_id.id, state.state
             ))
         })?;
     }
 
-    let new_status = match wad_record.wad_type {
+    let new_status = match wad_id.wad_type {
         db::wad::WadType::OUT => {
             if all_spent {
                 Some(db::wad::WadStatus::Finished)
@@ -159,7 +160,7 @@ pub async fn sync_single_wad(
 
     if let Some(status) = &new_status {
         let db_conn = pool.get()?;
-        db::wad::update_wad_status(&db_conn, &wad_record.id, *status)?;
+        db::wad::update_wad_status(&db_conn, wad_id.id, *status)?;
     }
 
     Ok(new_status)
@@ -167,79 +168,6 @@ pub async fn sync_single_wad(
 
 #[derive(Debug, Clone)]
 pub struct WadSyncResult {
-    pub wad_id: String,
+    pub wad_id: Uuid,
     pub result: Result<Option<db::wad::WadStatus>, String>,
-}
-
-async fn spend_out_wad_proofs(
-    pool: Pool<SqliteConnectionManager>,
-    node_client: &mut NodeClient<Channel>,
-    compact_wad: &crate::types::compact_wad::CompactWad<starknet_types::Unit>,
-    proof_ys: &[PublicKey],
-) -> Result<(), Error> {
-    let node_id = {
-        let db_conn = pool.get()?;
-        db::node::get_id_by_url(&db_conn, &compact_wad.node_url)?.ok_or_else(|| {
-            Error::from(crate::RegisterNodeError::NotFound(
-                compact_wad.node_url.clone(),
-            ))
-        })?
-    };
-
-    let proofs = {
-        let db_conn = pool.get()?;
-        crate::load_tokens_from_db(&db_conn, proof_ys)?
-    };
-
-    if proofs.is_empty() {
-        return Ok(());
-    }
-
-    let inputs: Vec<node_client::Proof> = proofs
-        .iter()
-        .map(|p| node_client::Proof {
-            amount: p.amount.into(),
-            keyset_id: p.keyset_id.to_bytes().to_vec(),
-            secret: p.secret.to_string(),
-            unblind_signature: p.c.to_bytes().to_vec(),
-        })
-        .collect();
-
-    let total_amount: Amount = proofs
-        .iter()
-        .map(|p| p.amount)
-        .fold(Amount::ZERO, |acc, amount| acc + amount);
-
-    let keyset_id = {
-        let db_conn = pool.get()?;
-        get_active_keyset_for_unit(&db_conn, node_id, compact_wad.unit.as_ref())?
-    };
-
-    let pre_mints = PreMint::generate_for_amount(total_amount, &SplitTarget::None)?;
-    let outputs = build_outputs_from_premints(keyset_id.to_bytes(), &pre_mints);
-
-    let swap_request = node_client::SwapRequest { inputs, outputs };
-    let swap_request_hash = hash_swap_request(&swap_request);
-    let swap_response = node_client.swap(swap_request).await?.into_inner();
-
-    {
-        let mut db_conn = pool.get()?;
-        let tx = db_conn.transaction()?;
-
-        db::proof::set_proofs_to_state(&tx, proof_ys, ProofState::Spent)?;
-
-        let _new_tokens = store_new_tokens(
-            &tx,
-            node_id,
-            keyset_id,
-            pre_mints.into_iter(),
-            swap_response.signatures.into_iter(),
-        )?;
-
-        tx.commit()?;
-    }
-
-    acknowledge(node_client, nuts::nut19::Route::Swap, swap_request_hash).await?;
-
-    Ok(())
 }

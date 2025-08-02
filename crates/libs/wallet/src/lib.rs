@@ -553,7 +553,8 @@ pub async fn receive_wad<U: Unit + serde::Serialize>(
 
     // Update WAD status
     let db_conn = pool.get()?;
-    db::wad::update_wad_status(&db_conn, &wad_id, db::wad::WadStatus::Finished)?;
+
+    db::wad::update_wad_status(&db_conn, wad_id, db::wad::WadStatus::Finished)?;
 
     Ok(total_amount)
 }
