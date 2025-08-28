@@ -131,6 +131,7 @@ pub async fn redeem_quote(
     }
 
     wallet::mint::redeem_quote(
+        crate::SEED_PHRASE_MANAGER,
         state.pool.clone(),
         &mut node_client,
         STARKNET_STR.to_string(),

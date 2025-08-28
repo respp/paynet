@@ -19,9 +19,16 @@ use tonic::transport::Certificate;
 
 use crate::background_tasks::start_price_fetcher;
 
+// Value must be the same as the one configurated in tauri.conf.json["identifier"]
+const SEED_PHRASE_MANAGER: wallet::wallet::keyring::SeedPhraseManager =
+    wallet::wallet::keyring::SeedPhraseManager::new("com.salto.app");
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = {
+        #[cfg(target_os = "android")]
+        android_keyring::set_android_keyring_credential_builder().unwrap();
+
         let builder = tauri::Builder::default();
 
         let builder = builder

@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use bitcoin::bip32::Xpriv;
 use clap::{Args, Parser, Subcommand, ValueHint};
 use colored::*;
 use node_client::NodeClient;
@@ -23,6 +22,10 @@ use wallet::{
 
 mod init;
 mod sync;
+
+const APP_IDENTIFIER: &str = "paynet-cli-wallet";
+const SEED_PHRASE_MANAGER: wallet::wallet::keyring::SeedPhraseManager =
+    wallet::wallet::keyring::SeedPhraseManager::new(APP_IDENTIFIER);
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -305,13 +308,7 @@ async fn main() -> Result<()> {
             };
             if should_restore {
                 println!("Restoring proofs");
-                wallet::node::restore(
-                    pool,
-                    node_id,
-                    node_client,
-                    Xpriv::from_str(&wallet.private_key)?,
-                )
-                .await?;
+                wallet::node::restore(SEED_PHRASE_MANAGER, pool, node_id, node_client).await?;
                 println!("Restoring done.");
 
                 let balances = wallet::db::balance::get_for_node(&db_conn, node_id)?;
@@ -374,29 +371,38 @@ async fn main() -> Result<()> {
             .await?;
 
             println!(
-                "MintQuote created with id: {}\nYou can proceed to payment using the following payload:\n{}",
+                "MintQuote created with id: {}",
                 &mint_quote_response.quote.red(),
-                &mint_quote_response.request.yellow()
             );
-            let deposit_payload: starknet_types::DepositPayload =
-                serde_json::from_str(&mint_quote_response.request)?;
-
-            #[cfg(debug_assertions)]
-            {
-                let payload_json = serde_json::to_string(&deposit_payload.call_data)?;
-                let encoded_payload = urlencoding::encode(&payload_json);
-
-                let url = format!(
-                    "http://localhost:3005/deposit/{}/{}/?payload={}",
-                    STARKNET_STR,
-                    deposit_payload.chain_id.as_str(),
-                    encoded_payload
-                );
-
+            if mint_quote_response.request.is_empty() {
                 println!(
-                    "Or you can pay it with your browser wallet at:\n{}",
-                    url.blue()
+                    "The node sent an empty payment requrest. This most likely means it has been configured as `mock`, for testing purpose.\nIf you see this while interacting with a REAL node, there is a problem."
+                )
+            } else {
+                println!(
+                    "You can proceed to payment using the following payload:\n{}",
+                    &mint_quote_response.request.yellow()
                 );
+                let deposit_payload: starknet_types::DepositPayload =
+                    serde_json::from_str(&mint_quote_response.request)?;
+
+                #[cfg(debug_assertions)]
+                {
+                    let payload_json = serde_json::to_string(&deposit_payload.call_data)?;
+                    let encoded_payload = urlencoding::encode(&payload_json);
+
+                    let url = format!(
+                        "http://localhost:3005/deposit/{}/{}/?payload={}",
+                        STARKNET_STR,
+                        deposit_payload.chain_id.as_str(),
+                        encoded_payload
+                    );
+
+                    println!(
+                        "Or you can pay it with your browser wallet at:\n{}",
+                        url.blue()
+                    );
+                }
             }
 
             match wallet::mint::wait_for_quote_payment(
@@ -414,6 +420,7 @@ async fn main() -> Result<()> {
             }
 
             wallet::mint::redeem_quote(
+                SEED_PHRASE_MANAGER,
                 pool.clone(),
                 &mut node_client,
                 STARKNET_STR.to_string(),
@@ -469,6 +476,7 @@ async fn main() -> Result<()> {
             println!("Melt quote created!");
 
             let melt_response = wallet::melt::pay_quote(
+                SEED_PHRASE_MANAGER,
                 pool.clone(),
                 &mut node_client,
                 node_id,
@@ -538,6 +546,7 @@ async fn main() -> Result<()> {
                 let (mut node_client, node_url) = connect_to_node(&mut db_conn, node_id).await?;
 
                 let proofs_ids = wallet::fetch_inputs_ids_from_db_or_node(
+                    SEED_PHRASE_MANAGER,
                     pool.clone(),
                     &mut node_client,
                     node_id,
@@ -630,6 +639,7 @@ async fn main() -> Result<()> {
                 } = wad;
 
                 match wallet::receive_wad(
+                    SEED_PHRASE_MANAGER,
                     pool.clone(),
                     &mut node_client,
                     node_id,
@@ -697,7 +707,7 @@ async fn main() -> Result<()> {
         }
         Commands::Restore { seed_phrase } => {
             let seed_phrase = wallet::seed_phrase::create_from_str(&seed_phrase)?;
-            wallet::wallet::restore(&db_conn, seed_phrase)?;
+            wallet::wallet::restore(SEED_PHRASE_MANAGER, &db_conn, seed_phrase)?;
             println!("Wallet saved!");
         }
         Commands::History { limit } => {

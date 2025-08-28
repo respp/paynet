@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use bitcoin::bip32::Xpriv;
 use tauri::State;
 use wallet::{db::balance::Balance, types::NodeUrl};
 
@@ -47,8 +46,7 @@ pub async fn add_node(
     let wallet = wallet::db::wallet::get(&*state.pool.get()?)?.unwrap();
 
     if wallet.is_restored {
-        let xpriv = Xpriv::from_str(&wallet.private_key)?;
-        wallet::node::restore(state.pool.clone(), id, client, xpriv).await?;
+        wallet::node::restore(crate::SEED_PHRASE_MANAGER, state.pool.clone(), id, client).await?;
     }
 
     let balances = wallet::db::balance::get_for_node(&*state.pool.get()?, id)?;
