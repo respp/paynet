@@ -189,7 +189,7 @@ where
 /// Proof V4
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompactProof {
-    /// Amount in satoshi
+    /// Amount
     #[serde(rename = "a")]
     pub amount: Amount,
     /// Secret message
@@ -236,6 +236,7 @@ mod tests {
     use nuts::nut00::secret::Secret;
     use nuts::nut01::PublicKey;
     use nuts::nut02::KeysetId;
+    use nuts::traits::Asset;
     use nuts::{Amount, traits::Unit};
     use std::str::FromStr;
 
@@ -269,7 +270,42 @@ mod tests {
         }
     }
 
-    impl Unit for TestUnit {}
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash)]
+    pub enum TestAsset {
+        Btc,
+    }
+
+    impl AsRef<str> for TestAsset {
+        fn as_ref(&self) -> &str {
+            match self {
+                TestAsset::Btc => "BTC",
+            }
+        }
+    }
+
+    impl Asset for TestAsset {
+        fn precision(&self) -> u8 {
+            8
+        }
+    }
+
+    impl Unit for TestUnit {
+        type Asset = TestAsset;
+
+        fn is_asset_supported(&self, _asset: Self::Asset) -> bool {
+            true
+        }
+
+        fn asset_extra_precision(&self) -> u8 {
+            8
+        }
+
+        fn matching_asset(&self) -> Self::Asset {
+            match self {
+                TestUnit::Sat => TestAsset::Btc,
+            }
+        }
+    }
 
     impl AsRef<str> for TestUnit {
         fn as_ref(&self) -> &str {

@@ -11,8 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::Asset;
 
+// Warning: those values are used in database storage.
+// Modifying them without creating migration will result in db corruption.
 const GWEI_STR: &str = "gwei";
-const MILLI_STR: &str = "millistrk";
+const MILLI_STR: &str = "m-strk";
+const SATOSHI_STR: &str = "sat";
+const MICRO_USDT_STR: &str = "u-usdt";
+const MICRO_USDC_STR: &str = "u-usdc";
 
 /// Represents units supported by the node for user-facing operations
 ///
@@ -22,6 +27,9 @@ const MILLI_STR: &str = "millistrk";
 pub enum Unit {
     MilliStrk,
     Gwei,
+    Satoshi,
+    MicroUsdT,
+    MicroUsdC,
 }
 
 /// Maps a unit to its corresponding blockchain asset
@@ -34,6 +42,9 @@ impl Unit {
         match self {
             Unit::MilliStrk => Asset::Strk,
             Unit::Gwei => Asset::Eth,
+            Unit::Satoshi => Asset::WBtc,
+            Unit::MicroUsdT => Asset::UsdT,
+            Unit::MicroUsdC => Asset::UsdC,
         }
     }
 
@@ -41,6 +52,9 @@ impl Unit {
         match self {
             Unit::MilliStrk => MILLI_STR,
             Unit::Gwei => GWEI_STR,
+            Unit::Satoshi => SATOSHI_STR,
+            Unit::MicroUsdT => MICRO_USDT_STR,
+            Unit::MicroUsdC => MICRO_USDC_STR,
         }
     }
 }
@@ -59,6 +73,9 @@ impl From<Unit> for u32 {
         match value {
             Unit::MilliStrk => 0,
             Unit::Gwei => 1,
+            Unit::Satoshi => 2,
+            Unit::MicroUsdT => 3,
+            Unit::MicroUsdC => 4,
         }
     }
 }
@@ -72,9 +89,12 @@ impl FromStr for Unit {
     type Err = UnitFromStrError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let unit = match s {
+        let unit = match s.to_lowercase().as_str() {
             MILLI_STR => Self::MilliStrk,
             GWEI_STR => Self::Gwei,
+            SATOSHI_STR => Self::Satoshi,
+            MICRO_USDT_STR => Self::MicroUsdT,
+            MICRO_USDC_STR => Self::MicroUsdC,
             _ => return Err(UnitFromStrError),
         };
 
@@ -91,7 +111,41 @@ impl std::fmt::Display for Unit {
 // Implementing nuts::traits::Unit enables this type to work with the rest of the protocol code.
 // Required because we will be supporting different sets of Units in the future.
 // Most likely, one by network we abstract.
-impl nuts::traits::Unit for Unit {}
+impl nuts::traits::Unit for Unit {
+    type Asset = crate::Asset;
+
+    fn matching_asset(&self) -> Self::Asset {
+        match self {
+            Unit::MilliStrk => Asset::Strk,
+            Unit::Gwei => Asset::Eth,
+            Unit::Satoshi => Asset::WBtc,
+            Unit::MicroUsdT => Asset::UsdT,
+            Unit::MicroUsdC => Asset::UsdC,
+        }
+    }
+
+    fn is_asset_supported(&self, asset: Self::Asset) -> bool {
+        matches!(
+            (self, asset),
+            (Unit::MilliStrk, Asset::Strk)
+                | (Unit::Gwei, Asset::Eth)
+                | (Unit::Satoshi, Asset::WBtc)
+                | (Unit::MicroUsdT, Asset::UsdC)
+                | (Unit::MicroUsdT, Asset::UsdT)
+                | (Unit::MicroUsdC, Asset::UsdC)
+        )
+    }
+
+    fn asset_extra_precision(&self) -> u8 {
+        match self {
+            Unit::MilliStrk => 15,
+            Unit::Gwei => 9,
+            Unit::Satoshi => 0,
+            Unit::MicroUsdT => 0,
+            Unit::MicroUsdC => 0,
+        }
+    }
+}
 
 // Conversion factor between an `Unit::Strk` `Amount` and its blockchain-native representation.
 // The starknet STRK token has a precision of 18. Meaning that 1 STRK = 10^18 wei.
@@ -100,35 +154,21 @@ impl nuts::traits::Unit for Unit {}
 // We could even arguee it's too small, but we really hope the token price will pump in the future.
 //
 // Therefore we need 10^15 as the conversion factor (10^18 / 10^3)
-const MILLI_STRK_UNIT_TO_ASSET_CONVERSION_RATE: u64 = 1_000_000_000_000_000;
+// const MILLI_STRK_UNIT_TO_ASSET_CONVERSION_RATE: u64 = 1_000_000_000_000_000;
 
 impl Unit {
     pub fn scale_factor(&self) -> u64 {
         match self {
-            Unit::MilliStrk => MILLI_STRK_UNIT_TO_ASSET_CONVERSION_RATE,
+            Unit::MilliStrk => 1_000_000_000_000_000,
             Unit::Gwei => 1_000_000_000,
-        }
-    }
-
-    pub fn scale_order(&self) -> u8 {
-        match self {
-            Unit::MilliStrk => 15,
-            Unit::Gwei => 9,
+            Unit::Satoshi => 1,
+            Unit::MicroUsdT => 1,
+            Unit::MicroUsdC => 1,
         }
     }
 
     /// Converts an amount of unit to its blockchain-native representation
     pub fn convert_amount_into_u256(&self, amount: Amount) -> U256 {
         U256::from(u64::from(amount)) * U256::from(self.scale_factor())
-    }
-    ///
-    /// Verifies that an asset is compatible with this unit
-    ///
-    /// This check helps to catch accidental mismatches between units and assets early.
-    pub fn is_asset_supported(&self, asset: Asset) -> bool {
-        matches!(
-            (self, asset),
-            (Unit::MilliStrk, Asset::Strk) | (Unit::Gwei, Asset::Eth)
-        )
     }
 }

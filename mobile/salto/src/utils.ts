@@ -7,10 +7,16 @@ import type { Balance, BalanceChange, NodeData } from "./types";
  */
 export function formatBalance(balance: Balance): {amount: number, asset: string} {
   switch(balance.unit) {
-    case "millistrk":
-      return { asset: "STRK", amount: balance.amount / 1000};
+    case "m-strk":
+      return { asset: "STRK", amount: balance.amount / 1_000};
     case "gwei":
-      return { asset: "ETH", amount: balance.amount / 1000000000};
+      return { asset: "ETH", amount: balance.amount / 1_000_000_000};
+    case "u-usdc":
+      return { asset: "USDC", amount: balance.amount / 1_000_000};
+    case "u-usdt":
+      return { asset: "USDT", amount: balance.amount / 1_000_000};
+    case "sat":
+      return { asset: "WBTC", amount: balance.amount / 100_000_000};
     default:
       return {asset: balance.unit.toLocaleUpperCase(), amount: balance.amount};
    }
@@ -18,10 +24,16 @@ export function formatBalance(balance: Balance): {amount: number, asset: string}
 
 export function unitPrecision(unit: string): number {
   switch(unit) {
-  case "millistrk":
+  case "m-strk":
     return 1000;
   case "gwei":
-    return 1000000000;
+    return 1_000_000_000;
+  case "u-usdc":
+    return 1_000_000;
+  case "u-usdt":
+    return 1_000_000;
+  case "sat":
+    return 100_000_000;
   default:
     console.log("unknown unit:", unit);
     return 1;
